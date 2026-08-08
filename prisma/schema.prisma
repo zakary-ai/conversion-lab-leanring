@@ -1,0 +1,738 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Users, auth, roles
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  LEARNER
+  // Future: EMPLOYER / RECRUITER can be added without schema rebuild
+  EMPLOYER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         Role       @default(LEARNER)
+  status       UserStatus @default(ACTIVE)
+  // Cached star balance — the StarTransaction ledger is the source of truth.
+  starBalance  Int        @default(0)
+  onboardedAt  DateTime?
+  lastActiveAt DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  profile             Profile?
+  sessions            Session[]
+  passwordResets      PasswordResetToken[]
+  starTransactions    StarTransaction[]     @relation("StarTxUser")
+  starTxCreated       StarTransaction[]     @relation("StarTxCreator")
+  enrollments         Enrollment[]
+  lessonProgress      LessonProgress[]
+  quizAttempts        QuizAttempt[]
+  channelMemberships  ChannelMembership[]
+  messages            Message[]
+  messageReactions    MessageReaction[]
+  dmParticipants      DmParticipant[]
+  dmMessages          DmMessage[]
+  callAttendees       CallAttendee[]
+  hostedCalls         LiveCall[]            @relation("CallHost")
+  jobApplications     JobApplication[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]            @relation("AuditActor")
+  moderationActions   ModerationAction[]    @relation("ModerationActor")
+  moderationReceived  ModerationAction[]    @relation("ModerationTarget")
+  unlockEvents        UnlockEvent[]
+}
+
+model Profile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline      String?
+  bio           String?
+  location      String?
+  avatarUrl     String?
+  salesExperience String?
+  skills        String[] @default([])
+  resumeUrl     String?
+  linkedinUrl   String?
+  videoIntroUrl String?
+  availability  String?
+  updatedAt     DateTime @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────
+// Star ledger — source of truth for progression
+// ─────────────────────────────────────────────────────────────
+
+enum StarTxType {
+  AUTOMATIC_REWARD
+  MANUAL_AWARD
+  MANUAL_DEDUCTION
+  ADMINISTRATIVE_CORRECTION
+}
+
+model StarTransaction {
+  id              String     @id @default(cuid())
+  userId          String
+  user            User       @relation("StarTxUser", fields: [userId], references: [id], onDelete: Cascade)
+  amount          Int // positive or negative
+  type            StarTxType
+  // What triggered an automatic award, e.g. "module" / moduleId or "quiz" / quizId
+  sourceType      String?
+  sourceId        String?
+  reason          String
+  previousBalance Int
+  newBalance      Int
+  createdById     String?
+  createdBy       User?      @relation("StarTxCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime   @default(now())
+
+  // Prevents the same automatic milestone from paying out twice.
+  @@unique([userId, sourceType, sourceId, type], name: "uniqueAutomaticReward")
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Training: courses → modules → lessons
+// ─────────────────────────────────────────────────────────────
+
+enum PublishStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Course {
+  id           String        @id @default(cuid())
+  title        String
+  description  String?
+  thumbnailUrl String?
+  status       PublishStatus @default(DRAFT)
+  minStars     Int           @default(0)
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  modules     Module[]
+  enrollments Enrollment[]
+}
+
+model Module {
+  id            String        @id @default(cuid())
+  courseId      String
+  course        Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  status        PublishStatus @default(DRAFT)
+  minStars      Int           @default(0)
+  sortOrder     Int           @default(0)
+  // Stars automatically awarded when the module (all required lessons + quiz) is completed
+  starReward    Int           @default(0)
+  // Optional prerequisite module that must be completed first
+  prerequisiteId String?
+  prerequisite  Module?       @relation("ModulePrereq", fields: [prerequisiteId], references: [id], onDelete: SetNull)
+  dependents    Module[]      @relation("ModulePrereq")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  lessons Lesson[]
+  quizzes Quiz[]
+}
+
+enum LessonType {
+  VIDEO
+  TEXT
+  DOCUMENT
+  LINK
+}
+
+model Lesson {
+  id          String        @id @default(cuid())
+  moduleId    String
+  module      Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  type        LessonType    @default(VIDEO)
+  // Video lessons reference a VideoAsset through the provider abstraction
+  videoAssetId String?
+  videoAsset  VideoAsset?   @relation(fields: [videoAssetId], references: [id], onDelete: SetNull)
+  // Text lessons store rich text content
+  content     String?
+  // Document / link lessons
+  fileUrl     String?
+  linkUrl     String?
+  durationMin Int?
+  status      PublishStatus @default(DRAFT)
+  required    Boolean       @default(true)
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  progress  LessonProgress[]
+  resources LessonResource[]
+}
+
+model LessonResource {
+  id       String @id @default(cuid())
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title    String
+  url      String
+  kind     String @default("file") // file | link
+}
+
+model Enrollment {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrolledAt DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model LessonProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Video assets via provider abstraction
+// ─────────────────────────────────────────────────────────────
+
+model VideoAsset {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  // Provider abstraction: "url" (external/embed), "file" (local/object storage), "mux", "youtube", "vimeo" ...
+  provider     String   @default("url")
+  // Provider-specific reference: URL, storage key, or provider asset id
+  reference    String
+  thumbnailUrl String?
+  durationSec  Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lessons Lesson[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Quizzes
+// ─────────────────────────────────────────────────────────────
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  MULTIPLE_SELECT
+  TRUE_FALSE
+  // Architected for later: SHORT_ANSWER, ORDERING, etc.
+}
+
+model Quiz {
+  id           String        @id @default(cuid())
+  moduleId     String
+  module       Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  passingScore Int           @default(80) // percentage
+  allowRetry   Boolean       @default(true)
+  maxAttempts  Int? // null = unlimited
+  status       PublishStatus @default(DRAFT)
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+}
+
+model QuizQuestion {
+  id          String       @id @default(cuid())
+  quizId      String
+  quiz        Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  type        QuestionType @default(MULTIPLE_CHOICE)
+  prompt      String
+  explanation String?
+  sortOrder   Int          @default(0)
+
+  answers QuizAnswer[]
+}
+
+model QuizAnswer {
+  id         String       @id @default(cuid())
+  questionId String
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean      @default(false)
+  sortOrder  Int          @default(0)
+}
+
+model QuizAttempt {
+  id          String    @id @default(cuid())
+  quizId      String
+  quiz        Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score       Int // percentage
+  passed      Boolean
+  // Answers snapshot: { [questionId]: string[] of chosen answerIds }
+  responses   Json
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([userId, quizId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Resource library
+// ─────────────────────────────────────────────────────────────
+
+model ResourceCategory {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  sortOrder Int        @default(0)
+  resources Resource[]
+}
+
+enum ResourceType {
+  PDF
+  DOCUMENT
+  SCRIPT
+  TEMPLATE
+  CHEAT_SHEET
+  LINK
+  VIDEO
+  FILE
+}
+
+model Resource {
+  id          String           @id @default(cuid())
+  title       String
+  description String?
+  type        ResourceType     @default(DOCUMENT)
+  categoryId  String?
+  category    ResourceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  url         String
+  thumbnailUrl String?
+  minStars    Int              @default(0)
+  status      PublishStatus    @default(DRAFT)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// Community channels
+// ─────────────────────────────────────────────────────────────
+
+enum ChannelSection {
+  COMMUNITY
+  ADVANCED
+  STAFF
+}
+
+model Channel {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  name        String
+  description String?
+  section     ChannelSection @default(COMMUNITY)
+  minStars    Int            @default(0)
+  // Minimum role required, null = any role. Stored as Role name for staff channels.
+  minRole     Role?
+  readOnly    Boolean        @default(false)
+  isPrivate   Boolean        @default(false) // private = membership required
+  hidden      Boolean        @default(false) // fully hidden when locked (default is visible-but-locked)
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+
+  memberships ChannelMembership[]
+  messages    Message[]
+}
+
+model ChannelMembership {
+  id        String   @id @default(cuid())
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+  lastReadAt DateTime @default(now())
+
+  @@unique([channelId, userId])
+}
+
+model Message {
+  id        String    @id @default(cuid())
+  channelId String
+  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  // Threaded replies
+  parentId  String?
+  parent    Message?  @relation("Thread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Message[] @relation("Thread")
+  pinned    Boolean   @default(false)
+  attachmentUrl String?
+  attachmentName String?
+  editedAt  DateTime?
+  deletedAt DateTime?
+  deletedById String?
+  createdAt DateTime  @default(now())
+
+  reactions MessageReaction[]
+
+  @@index([channelId, createdAt])
+}
+
+model MessageReaction {
+  id        String  @id @default(cuid())
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+
+  @@unique([messageId, userId, emoji])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Direct messages (architected for future group DMs)
+// ─────────────────────────────────────────────────────────────
+
+model DmConversation {
+  id        String   @id @default(cuid())
+  isGroup   Boolean  @default(false)
+  title     String? // for future group DMs
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants DmParticipant[]
+  messages     DmMessage[]
+}
+
+model DmParticipant {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   DmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime       @default(now())
+  joinedAt       DateTime       @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model DmMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   DmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User           @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Live calls
+// ─────────────────────────────────────────────────────────────
+
+enum CallStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+model LiveCall {
+  id            String     @id @default(cuid())
+  title         String
+  description   String?
+  hostId        String?
+  host          User?      @relation("CallHost", fields: [hostId], references: [id], onDelete: SetNull)
+  scheduledAt   DateTime
+  durationMin   Int        @default(60)
+  minStars      Int        @default(0)
+  maxAttendees  Int?
+  recordingEnabled Boolean @default(false)
+  relatedModuleId String?
+  status        CallStatus @default(SCHEDULED)
+  // Provider abstraction: room reference from the configured RTC provider
+  providerRoomId String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  attendees  CallAttendee[]
+  recordings CallRecording[]
+}
+
+model CallAttendee {
+  id       String   @id @default(cuid())
+  callId   String
+  call     LiveCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rsvpAt   DateTime @default(now())
+  joinedAt DateTime?
+
+  @@unique([callId, userId])
+}
+
+model CallRecording {
+  id          String        @id @default(cuid())
+  callId      String
+  call        LiveCall      @relation(fields: [callId], references: [id], onDelete: Cascade)
+  title       String
+  url         String
+  minStars    Int           @default(0)
+  status      PublishStatus @default(DRAFT)
+  recordedAt  DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────
+// Job board
+// ─────────────────────────────────────────────────────────────
+
+enum JobLocationType {
+  REMOTE
+  HYBRID
+  ON_SITE
+}
+
+enum JobEmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  COMMISSION_ONLY
+}
+
+enum JobCategory {
+  SETTER
+  APPOINTMENT_SETTER
+  SDR
+  BDR
+  CLOSER
+  ACCOUNT_EXECUTIVE
+  SALES_REPRESENTATIVE
+  SALES_MANAGER
+}
+
+model Job {
+  id             String            @id @default(cuid())
+  company        String
+  companyLogoUrl String?
+  title          String
+  location       String?
+  locationType   JobLocationType   @default(REMOTE)
+  employmentType JobEmploymentType @default(FULL_TIME)
+  category       JobCategory       @default(SDR)
+  compensation   String?
+  baseSalary     String?
+  commission     String?
+  description    String
+  requirements   String?
+  minStars       Int               @default(0)
+  status         PublishStatus     @default(DRAFT)
+  postedAt       DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  // Future: employerId for Employer/Recruiter accounts — role enum already reserves EMPLOYER
+  employerId     String?
+
+  applications JobApplication[]
+}
+
+enum ApplicationStatus {
+  APPLIED
+  UNDER_REVIEW
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+model JobApplication {
+  id        String            @id @default(cuid())
+  jobId     String
+  job       Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String?
+  resumeUrl String?
+  answers   Json? // additional requested questions
+  status    ApplicationStatus @default(APPLIED)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([jobId, userId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Notifications
+// ─────────────────────────────────────────────────────────────
+
+enum NotificationType {
+  STAR_EARNED
+  CONTENT_UNLOCKED
+  QUIZ_RESULT
+  MODULE_AVAILABLE
+  CALL_UPCOMING
+  CALL_STARTING
+  NEW_DM
+  MENTION
+  REPLY
+  JOB_UNLOCKED
+  NEW_JOB
+  APPLICATION_UPDATE
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  linkUrl   String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  // Architected so email/push delivery can be layered on later
+  emailedAt DateTime?
+  pushedAt  DateTime?
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+// Records shown in "Recently unlocked" — written when a star change makes new content eligible
+model UnlockEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType String // course | module | resource | channel | job_board | call | recording
+  entityId   String?
+  title      String
+  atStars    Int
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Moderation, audit, settings
+// ─────────────────────────────────────────────────────────────
+
+model ModerationAction {
+  id        String   @id @default(cuid())
+  actorId   String
+  actor     User     @relation("ModerationActor", fields: [actorId], references: [id], onDelete: Cascade)
+  targetId  String?
+  target    User?    @relation("ModerationTarget", fields: [targetId], references: [id], onDelete: SetNull)
+  action    String // delete_message | pin_message | mute_user | report | escalate
+  entityType String?
+  entityId  String?
+  reason    String?
+  expiresAt DateTime? // for mutes
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action     String // e.g. star.award, user.suspend, module.publish, job.create
+  entityType String?
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Admin-configurable platform settings (key-value, typed at the app layer)
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// Admin-defined star rules for future milestone types (beyond module completion)
+model StarRule {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  // trigger: module_complete | quiz_pass | path_complete | custom
+  trigger     String
+  targetType  String?
+  targetId    String?
+  starAmount  Int      @default(1)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+// Future gamification: achievements (not exposed in MVP UI)
+model Achievement {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  iconKey     String?
+  active      Boolean @default(false)
+}
