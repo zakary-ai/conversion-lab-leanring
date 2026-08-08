@@ -20,10 +20,12 @@ export function DemoSwitcher() {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   if (hidden) return null;
 
   async function loginAs(email: string) {
     setBusy(email);
+    setError(null);
     try {
       const res = await fetch("/api/auth/demo", {
         method: "POST",
@@ -31,13 +33,19 @@ export function DemoSwitcher() {
         body: JSON.stringify({ email }),
       });
       if (res.status === 404) {
+        // Demo mode disabled server-side (DEMO_MODE !== "true") — hide entirely
         setHidden(true);
         return;
       }
-      if (res.ok) {
-        router.push("/dashboard");
-        router.refresh();
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(data.error ?? "Demo sign-in failed. Check the server logs.");
+        return;
       }
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setError("Could not reach the server. Is `npm run dev` still running?");
     } finally {
       setBusy(null);
     }
@@ -46,6 +54,11 @@ export function DemoSwitcher() {
   return (
     <div className="mt-6 border-t border-edge pt-5">
       <p className="section-title mb-3">Demo accounts</p>
+      {error && (
+        <p className="text-sm text-bad bg-bad/10 border border-bad/25 rounded-lg px-3 py-2 mb-3 animate-fade">
+          {error}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2">
         {DEMO_ACCOUNTS.map((acc) => (
           <button
