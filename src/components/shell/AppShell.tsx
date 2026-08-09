@@ -40,6 +40,11 @@ const ADMIN_NAV = [
   { href: "/admin/audit", label: "Audit Log", icon: Icons.audit },
 ];
 
+// Super Admin-only: platform-wide DM oversight
+const SUPER_ADMIN_NAV = [
+  { href: "/admin/messages", label: "Message Oversight", icon: Icons.messages },
+];
+
 export function AppShell({
   user,
   unreadNotifications,
@@ -103,7 +108,10 @@ export function AppShell({
         <div className="mt-6">
           <p className="section-title px-3 mb-2">{user.isAdmin ? "Admin" : "Staff"}</p>
           <nav className="space-y-0.5">
-            {(user.isAdmin ? ADMIN_NAV : ADMIN_NAV.slice(0, 1)).map((item) => (
+            {[
+              ...(user.isAdmin ? ADMIN_NAV : ADMIN_NAV.slice(0, 1)),
+              ...(user.role === "SUPER_ADMIN" ? SUPER_ADMIN_NAV : []),
+            ].map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
