@@ -659,7 +659,7 @@ function LessonForm({
           {videoMode === "url" ? (
             <input
               className="input"
-              placeholder="https://youtube.com/watch?v=… (YouTube, Vimeo, or direct MP4/HLS)"
+              placeholder="https://youtube.com/watch?v=… (YouTube, Vimeo, Google Drive, or direct MP4/HLS)"
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
             />

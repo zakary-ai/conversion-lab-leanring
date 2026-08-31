@@ -6,7 +6,7 @@
  * Cloudflare Stream) means adding a resolver — the LMS never changes.
  *
  * Built-in providers:
- *  - "youtube" / "vimeo": reference is the external video URL or id → embed
+ *  - "youtube" / "vimeo" / "gdrive": reference is the external video URL or id → embed
  *  - "url":  reference is a direct media URL (mp4/HLS) → native <video>
  *  - "file": reference is an object-storage key served via /api/files
  */
@@ -27,6 +27,14 @@ export function resolveVideo(asset: { provider: string; reference: string }): Re
       const id = asset.reference.match(/(\d{6,})/)?.[1];
       if (!id) return { kind: "unavailable", message: "Invalid Vimeo reference" };
       return { kind: "embed", src: `https://player.vimeo.com/video/${id}` };
+    }
+    case "gdrive": {
+      const id = extractGoogleDriveId(asset.reference);
+      if (!id) return { kind: "unavailable", message: "Invalid Google Drive reference" };
+      // Drive's embed player; direct file access is unreliable (quotas,
+      // virus-scan interstitials), so embed like YouTube/Vimeo. The file
+      // must be shared as "Anyone with the link can view".
+      return { kind: "embed", src: `https://drive.google.com/file/d/${id}/preview` };
     }
     case "url":
       return { kind: "native", src: asset.reference };
@@ -59,5 +67,17 @@ function extractYouTubeId(ref: string): string | null {
 export function detectProviderFromUrl(url: string): { provider: string; reference: string } {
   if (/youtube\.com|youtu\.be/.test(url)) return { provider: "youtube", reference: url };
   if (/vimeo\.com/.test(url)) return { provider: "vimeo", reference: url };
+  if (/drive\.google\.com|docs\.google\.com\/file/.test(url)) return { provider: "gdrive", reference: url };
   return { provider: "url", reference: url };
+}
+
+function extractGoogleDriveId(ref: string): string | null {
+  // Bare file id
+  if (/^[\w-]{20,}$/.test(ref)) return ref;
+  // https://drive.google.com/file/d/<id>/view, .../preview, docs.google.com/file/d/<id>
+  const pathMatch = ref.match(/\/(?:file|document)\/d\/([\w-]{20,})/);
+  if (pathMatch) return pathMatch[1];
+  // https://drive.google.com/open?id=<id> and uc?id=<id>&export=download
+  const queryMatch = ref.match(/[?&]id=([\w-]{20,})/);
+  return queryMatch ? queryMatch[1] : null;
 }
