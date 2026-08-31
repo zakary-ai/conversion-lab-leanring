@@ -31,7 +31,9 @@ export function resolveVideo(asset: { provider: string; reference: string }): Re
     case "url":
       return { kind: "native", src: asset.reference };
     case "file":
-      return { kind: "native", src: `/api/files/${encodeURIComponent(asset.reference)}` };
+      // Keys are multi-segment (e.g. "videos/ab12-clip.mp4") — encode each
+      // segment so the /api/files/[...key] catch-all sees the segments.
+      return { kind: "native", src: `/api/files/${asset.reference.split("/").map(encodeURIComponent).join("/")}` };
     default:
       return {
         kind: "unavailable",

@@ -10,6 +10,8 @@ const schema = z.object({
   description: z.string().trim().max(4000).optional(),
   type: z.enum(["VIDEO", "TEXT", "DOCUMENT", "LINK"]).default("VIDEO"),
   videoUrl: z.string().trim().url().optional(),
+  // Storage key of a video uploaded via /api/admin/uploads; wins over videoUrl
+  videoKey: z.string().trim().regex(/^videos\/[\w.\-]+$/).optional(),
   content: z.string().trim().max(20000).optional(),
   fileUrl: z.string().trim().url().optional(),
   linkUrl: z.string().trim().url().optional(),
@@ -20,11 +22,13 @@ const schema = z.object({
 export async function POST(req: Request) {
   return withRole("ADMIN", async (user) => {
     const body = schema.parse(await req.json());
-    const { videoUrl, ...rest } = body;
+    const { videoUrl, videoKey, ...rest } = body;
 
     let videoAssetId: string | undefined;
-    if (body.type === "VIDEO" && videoUrl) {
-      const detected = detectProviderFromUrl(videoUrl);
+    if (body.type === "VIDEO" && (videoKey || videoUrl)) {
+      const detected = videoKey
+        ? { provider: "file", reference: videoKey }
+        : detectProviderFromUrl(videoUrl!);
       const asset = await db.videoAsset.create({
         data: { title: body.title, provider: detected.provider, reference: detected.reference },
       });

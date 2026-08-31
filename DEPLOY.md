@@ -52,10 +52,11 @@ Everything below is off by default and degrades honestly (clear in-app notices, 
 | --- | --- | --- |
 | Embedded live call rooms | `DAILY_API_KEY`, `DAILY_DOMAIN` | [daily.co](https://www.daily.co) dashboard |
 | Password-reset & notification email | `RESEND_API_KEY`, `EMAIL_FROM` | [resend.com](https://resend.com) (verify a sender domain) |
-| File uploads (resumes, attachments) | `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | any S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2) |
+| File uploads (training videos, resumes, attachments) | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | any S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2) |
 
 ## Production notes
 
 - **Serverless filesystem**: the local-disk storage fallback does not persist on Vercel. Nothing in the seeded demo depends on it, but configure S3-compatible storage before enabling user uploads.
+- **Training video uploads**: admins can upload video files directly to video lessons (Course Builder → lesson → Video → "Upload file"). In development the file lands in `./storage`. In production S3-compatible storage is **required**: Vercel caps request bodies at ~4.5 MB, so the browser uploads straight to the bucket via a presigned `PUT` — set the bucket's CORS policy to allow `PUT` (and header `Content-Type`) from your app origin. Playback redirects to a short-lived presigned URL, so the bucket can stay fully private.
 - **DEMO_MODE**: with it set to `false`, the demo endpoint returns 404 and the one-click buttons disappear — the demo accounts themselves remain and can still sign in with their password, so also change or remove them (Admin → Learners) for a real launch.
 - **Realtime**: chat/notifications use light polling and work on serverless out of the box. For multi-region scale, swap the polling transport for SSE/WebSockets behind the same client hooks.

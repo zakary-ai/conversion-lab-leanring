@@ -13,11 +13,70 @@ type LessonData = {
   type: "VIDEO" | "TEXT" | "DOCUMENT" | "LINK";
   status: string;
   durationMin: number | null;
+  /** Video asset provider ("youtube", "vimeo", "url", "file"), or "" when none */
+  videoProvider: string;
   videoUrl: string;
   content: string;
   linkUrl: string;
   fileUrl: string;
 };
+
+/**
+ * Upload a video file: ask /api/admin/uploads for a presigned URL (object
+ * storage) or fall back to a multipart POST (local disk in development).
+ * Resolves to the storage key to persist on the lesson.
+ */
+async function uploadVideoFile(file: File, onProgress: (pct: number) => void): Promise<string> {
+  const negotiate = await fetch("/api/admin/uploads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+  });
+  if (!negotiate.ok) {
+    const data = (await negotiate.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error ?? "Upload failed");
+  }
+  const plan = (await negotiate.json()) as { mode: "presigned" | "form"; uploadUrl?: string; key?: string };
+
+  if (plan.mode === "presigned" && plan.uploadUrl && plan.key) {
+    await xhrUpload("PUT", plan.uploadUrl, file, file.type, onProgress);
+    return plan.key;
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const response = await xhrUpload("POST", "/api/admin/uploads", form, null, onProgress);
+  return (JSON.parse(response) as { key: string }).key;
+}
+
+/** fetch() has no upload progress, so uploads go through XMLHttpRequest. */
+function xhrUpload(
+  method: string,
+  url: string,
+  body: File | FormData,
+  contentType: string | null,
+  onProgress: (pct: number) => void
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    if (contentType) xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+      else {
+        let message = `Upload failed (${xhr.status})`;
+        try {
+          message = (JSON.parse(xhr.responseText) as { error?: string }).error ?? message;
+        } catch {}
+        reject(new Error(message));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Upload failed — check your connection"));
+    xhr.send(body);
+  });
+}
 
 type QuizData = {
   id: string;
@@ -474,6 +533,7 @@ function NewLessonForm({
         type: "VIDEO",
         status: "DRAFT",
         durationMin: null,
+        videoProvider: "",
         videoUrl: "",
         content: "",
         linkUrl: "",
@@ -508,6 +568,34 @@ function LessonForm({
   const [linkUrl, setLinkUrl] = useState(initial.linkUrl);
   const [fileUrl, setFileUrl] = useState(initial.fileUrl);
   const [durationMin, setDurationMin] = useState(initial.durationMin?.toString() ?? "");
+  const [videoMode, setVideoMode] = useState<"url" | "upload">(
+    initial.videoProvider === "file" ? "upload" : "url"
+  );
+  const [videoKey, setVideoKey] = useState("");
+  const [uploadedName, setUploadedName] = useState("");
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState("");
+
+  const uploading = uploadPct !== null && uploadPct < 100;
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      setUploadError("Please choose a video file (MP4, WebM, MOV…)");
+      return;
+    }
+    setUploadError("");
+    setUploadPct(0);
+    try {
+      const key = await uploadVideoFile(file, setUploadPct);
+      setVideoKey(key);
+      setUploadedName(file.name);
+      setUploadPct(100);
+    } catch (err) {
+      setUploadPct(null);
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    }
+  }
 
   function submit() {
     const fields: Record<string, unknown> = {
@@ -516,7 +604,10 @@ function LessonForm({
       description: description.trim() || undefined,
       durationMin: durationMin ? Number(durationMin) : null,
     };
-    if (type === "VIDEO" && videoUrl.trim()) fields.videoUrl = videoUrl.trim();
+    if (type === "VIDEO") {
+      if (videoMode === "upload" && videoKey) fields.videoKey = videoKey;
+      else if (videoMode === "url" && videoUrl.trim()) fields.videoUrl = videoUrl.trim();
+    }
     if (type === "TEXT") fields.content = content;
     if (type === "LINK" && linkUrl.trim()) fields.linkUrl = linkUrl.trim();
     if (type === "DOCUMENT" && fileUrl.trim()) fields.fileUrl = fileUrl.trim();
@@ -546,8 +637,66 @@ function LessonForm({
       </div>
       {type === "VIDEO" && (
         <div className="sm:col-span-2">
-          <label className="label">Video URL (YouTube, Vimeo, or direct MP4/HLS)</label>
-          <input className="input" placeholder="https://youtube.com/watch?v=…" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
+          <div className="flex items-center gap-2 mb-1.5">
+            <label className="label mb-0">Video</label>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className={`chip cursor-pointer ${videoMode === "url" ? "chip-accent" : ""}`}
+                onClick={() => setVideoMode("url")}
+              >
+                Link URL
+              </button>
+              <button
+                type="button"
+                className={`chip cursor-pointer ${videoMode === "upload" ? "chip-accent" : ""}`}
+                onClick={() => setVideoMode("upload")}
+              >
+                Upload file
+              </button>
+            </div>
+          </div>
+          {videoMode === "url" ? (
+            <input
+              className="input"
+              placeholder="https://youtube.com/watch?v=… (YouTube, Vimeo, or direct MP4/HLS)"
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
+            />
+          ) : (
+            <div className="grid gap-1.5">
+              <input
+                className="input"
+                type="file"
+                accept="video/*"
+                disabled={uploading}
+                onChange={(e) => void handleFile(e.target.files?.[0])}
+              />
+              {uploadPct !== null && (
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="h-1.5 flex-1 rounded-full bg-overlay overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-accent-hi transition-all"
+                      style={{ width: `${uploadPct}%` }}
+                    />
+                  </div>
+                  <span className="text-ink-dim w-24">
+                    {videoKey ? `Uploaded ✓` : `Uploading ${uploadPct}%`}
+                  </span>
+                </div>
+              )}
+              {videoKey ? (
+                <p className="text-xs text-ink-dim">
+                  {uploadedName} — saved when you {initial.id ? "save" : "add"} the lesson.
+                </p>
+              ) : initial.videoProvider === "file" && uploadPct === null ? (
+                <p className="text-xs text-ink-dim">
+                  This lesson has an uploaded video. Choose a file to replace it.
+                </p>
+              ) : null}
+              {uploadError && <p className="text-xs text-bad">{uploadError}</p>}
+            </div>
+          )}
         </div>
       )}
       {type === "TEXT" && (
@@ -573,7 +722,7 @@ function LessonForm({
         <textarea className="input min-h-16 resize-y" value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <div className="sm:col-span-2 flex gap-2">
-        <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy || !title.trim()}>
+        <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy || uploading || !title.trim()}>
           {initial.id ? "Save lesson" : "Add lesson"}
         </button>
         <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>

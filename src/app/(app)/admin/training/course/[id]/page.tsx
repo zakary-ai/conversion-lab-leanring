@@ -49,7 +49,9 @@ export default async function AdminCoursePage({ params }: { params: Promise<{ id
             type: l.type,
             status: l.status,
             durationMin: l.durationMin,
-            videoUrl: l.videoAsset?.reference ?? "",
+            videoProvider: l.videoAsset?.provider ?? "",
+            // Storage keys of uploaded files are internal — never shown as a URL
+            videoUrl: l.videoAsset && l.videoAsset.provider !== "file" ? l.videoAsset.reference : "",
             content: l.content ?? "",
             linkUrl: l.linkUrl ?? "",
             fileUrl: l.fileUrl ?? "",
