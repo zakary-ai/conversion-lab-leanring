@@ -15,7 +15,7 @@ type ApplicationRow = {
   applicant: {
     id: string;
     name: string;
-    email: string;
+    email: string | null;
     stars: number;
     headline: string | null;
     linkedinUrl: string | null;
@@ -180,7 +180,7 @@ export function JobManager({ jobs }: { jobs: JobRow[] }) {
                             <span className="text-accent-hi text-xs ml-2">⭐ {app.applicant.stars}</span>
                           </p>
                           <p className="text-xs text-ink-dim">
-                            {app.applicant.headline ?? app.applicant.email} · applied {timeAgo(app.createdAt)}
+                            {app.applicant.headline ?? app.applicant.email ?? "No email"} · applied {timeAgo(app.createdAt)}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">

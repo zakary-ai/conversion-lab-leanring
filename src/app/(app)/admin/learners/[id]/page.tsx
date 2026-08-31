@@ -7,6 +7,7 @@ import { enumLabel, formatDateShort, timeAgo } from "@/lib/format";
 import { Avatar } from "@/components/ui/Avatar";
 import { StarIcon } from "@/components/ui/Star";
 import { UserAdminControls } from "@/components/admin/learners/UserAdminControls";
+import { formatAccessCode } from "@/lib/access-code";
 
 export const metadata = { title: "Admin · Learner" };
 
@@ -59,7 +60,7 @@ export default async function AdminLearnerDetailPage({
             <span className="chip">{enumLabel(user.role)}</span>
             {user.status === "SUSPENDED" && <span className="chip chip-bad">Suspended</span>}
           </h1>
-          <p className="text-sm text-ink-mid">{user.email}</p>
+          <p className="text-sm text-ink-mid">{user.email ?? "No email — signs in with access code"}</p>
           <p className="text-xs text-ink-dim mt-1">
             Joined {formatDateShort(user.createdAt)} · Last active{" "}
             {user.lastActiveAt ? timeAgo(user.lastActiveAt) : "never"}
@@ -85,7 +86,14 @@ export default async function AdminLearnerDetailPage({
       </div>
 
       <UserAdminControls
-        user={{ id: user.id, name: user.name, role: user.role, status: user.status }}
+        user={{
+          id: user.id,
+          name: user.name,
+          role: user.role,
+          status: user.status,
+          hasEmail: Boolean(user.email),
+          accessCode: user.accessCode ? formatAccessCode(user.accessCode) : null,
+        }}
         actorRole={actor.role}
       />
 

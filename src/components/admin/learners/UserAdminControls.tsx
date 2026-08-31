@@ -7,7 +7,14 @@ export function UserAdminControls({
   user,
   actorRole,
 }: {
-  user: { id: string; name: string; role: string; status: string };
+  user: {
+    id: string;
+    name: string;
+    role: string;
+    status: string;
+    hasEmail: boolean;
+    accessCode: string | null;
+  };
   actorRole: string;
 }) {
   const router = useRouter();
@@ -15,6 +22,31 @@ export function UserAdminControls({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function accessCodeAction(method: "POST" | "DELETE") {
+    setBusy(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/access-code`, { method });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setFeedback({ ok: false, text: data.error ?? "Action failed" });
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyCode(code: string) {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  }
 
   async function call(path: string, body: unknown) {
     setBusy(true);
@@ -135,6 +167,52 @@ export function UserAdminControls({
           )}
         </div>
       </div>
+
+      <div className="mt-5 pt-5 border-t border-edge/60">
+        <p className="text-sm font-semibold mb-2">Access code</p>
+        {user.accessCode ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="input w-auto font-mono tracking-widest select-all">{user.accessCode}</code>
+            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void copyCode(user.accessCode!)}>
+              {copied ? "Copied ✓" : "Copy"}
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={busy}
+              onClick={() => {
+                if (confirm(`Generate a new code for ${user.name}? The current code will stop working.`)) {
+                  void accessCodeAction("POST");
+                }
+              }}
+            >
+              Regenerate
+            </button>
+            <button
+              className="btn btn-ghost btn-sm hover:text-bad"
+              disabled={busy}
+              onClick={() => {
+                const warning = user.hasEmail
+                  ? `Remove ${user.name}'s access code? They can still sign in with email.`
+                  : `Remove ${user.name}'s access code? They have no email, so they won't be able to sign in at all until a new code is generated.`;
+                if (confirm(warning)) void accessCodeAction("DELETE");
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-ink-mid">No access code — signs in with email and password.</p>
+            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void accessCodeAction("POST")}>
+              Generate code
+            </button>
+          </div>
+        )}
+        <p className="text-xs text-ink-dim mt-1.5">
+          The access code signs this person in without an email or password. Share it privately.
+        </p>
+      </div>
+
       {feedback && (
         <p className={`text-sm mt-3 ${feedback.ok ? "text-good" : "text-bad"}`}>{feedback.text}</p>
       )}

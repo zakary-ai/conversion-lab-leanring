@@ -5,6 +5,7 @@ import { enumLabel, timeAgo } from "@/lib/format";
 import { Avatar } from "@/components/ui/Avatar";
 import { StarIcon } from "@/components/ui/Star";
 import { Icons } from "@/components/ui/icons";
+import { AddPersonForm } from "@/components/admin/learners/AddPersonForm";
 
 export const metadata = { title: "Admin · Learners" };
 
@@ -30,9 +31,12 @@ export default async function AdminLearnersPage({
 
   return (
     <div className="animate-rise">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Learners</h1>
-        <p className="text-ink-mid text-sm mt-1">{users.length} accounts shown</p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Learners</h1>
+          <p className="text-ink-mid text-sm mt-1">{users.length} accounts shown</p>
+        </div>
+        <AddPersonForm />
       </header>
 
       <form action="/admin/learners" className="mb-5 max-w-md">
@@ -67,7 +71,9 @@ export default async function AdminLearnersPage({
                       <Avatar name={u.name} size="sm" />
                       <span>
                         <span className="block font-semibold">{u.name}</span>
-                        <span className="block text-xs text-ink-dim">{u.email}</span>
+                        <span className="block text-xs text-ink-dim">
+                          {u.email ?? "Signs in with access code"}
+                        </span>
                       </span>
                       {u.status === "SUSPENDED" && <span className="chip chip-bad">Suspended</span>}
                     </Link>

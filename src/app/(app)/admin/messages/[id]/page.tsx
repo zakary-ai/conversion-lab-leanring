@@ -59,7 +59,7 @@ export default async function AdminConversationPage({
               <Avatar name={p.user.name} size="sm" />
               <span>
                 <span className="block text-sm font-semibold">{p.user.name}</span>
-                <span className="block text-xs text-ink-dim">{p.user.email}</span>
+                <span className="block text-xs text-ink-dim">{p.user.email ?? "Access code account"}</span>
               </span>
             </Link>
           ))}

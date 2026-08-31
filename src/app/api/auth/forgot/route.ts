@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   if (!body.success) return ok;
 
   const user = await db.user.findUnique({ where: { email: body.data.email } });
-  if (!user) return ok;
+  if (!user?.email) return ok;
 
   const token = crypto.randomBytes(32).toString("hex");
   await db.passwordResetToken.create({

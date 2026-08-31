@@ -27,9 +27,12 @@ enum UserStatus {
 
 model User {
   id           String     @id @default(cuid())
-  email        String     @unique
+  // Optional so admins can add people by access code before they have an email
+  email        String?    @unique
   passwordHash String
   name         String
+  // Sign-in access code (normalized, no dashes) for email-less accounts
+  accessCode   String?    @unique
   role         Role       @default(LEARNER)
   status       UserStatus @default(ACTIVE)
   // Cached star balance — the StarTransaction ledger is the source of truth.
