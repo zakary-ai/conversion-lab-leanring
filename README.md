@@ -33,7 +33,7 @@ Open http://localhost:3000.
 
 ### Demo accounts
 
-All seeded with password **`academy123`**, and available as one-click logins on the sign-in page while `DEMO_MODE="true"`:
+All seeded with password **`academy123`** (sign in with the email + password form):
 
 | Account | Role | State |
 | --- | --- | --- |
