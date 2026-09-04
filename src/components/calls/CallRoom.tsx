@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Icons } from "@/components/ui/icons";
+import { useTimeZone } from "@/components/time/TimeZoneContext";
+import { formatLocal } from "@/components/one-on-ones/LocalTime";
 
 /**
- * Embedded call experience. Joining goes through the RTC provider
- * abstraction; without provider credentials it shows an honest setup notice
- * instead of a fake room.
+ * Call experience. Zoom-hosted calls open in a new tab (Zoom can't be
+ * embedded); otherwise the RTC provider's room is embedded. Without any
+ * provider credentials it shows an honest setup notice instead of a fake room.
  */
 export function CallRoom({
   callId,
@@ -14,15 +17,19 @@ export function CallRoom({
   attending,
   isLive,
   startsAt,
+  hostedOnZoom,
 }: {
   callId: string;
   joinable: boolean;
   attending: boolean;
   isLive: boolean;
   startsAt: string;
+  hostedOnZoom: boolean;
 }) {
+  const tz = useTimeZone();
   const router = useRouter();
   const [joinUrl, setJoinUrl] = useState<string | null>(null);
+  const [external, setExternal] = useState<{ url: string; asHost: boolean } | null>(null);
   const [notConfigured, setNotConfigured] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [isAttending, setIsAttending] = useState(attending);
@@ -48,11 +55,18 @@ export function CallRoom({
       if (!res.ok) return;
       const data = (await res.json()) as {
         configured: boolean;
+        external?: boolean;
+        asHost?: boolean;
         joinUrl?: string;
         message?: string;
       };
       if (!data.configured) {
         setNotConfigured(data.message ?? "Video provider not configured.");
+        return;
+      }
+      if (data.external && data.joinUrl) {
+        window.open(data.joinUrl, "_blank", "noopener,noreferrer");
+        setExternal({ url: data.joinUrl, asHost: Boolean(data.asHost) });
         return;
       }
       setJoinUrl(data.joinUrl ?? null);
@@ -87,14 +101,29 @@ export function CallRoom({
           <p className="text-ink-mid mt-1">{notConfigured}</p>
         </div>
       )}
+      {external && (
+        <div className="card-raised border border-good/30 p-4 mb-4 text-sm animate-fade">
+          <p className="font-semibold">
+            {external.asHost ? "Zoom opened in a new tab — you're joining as the host." : "Zoom opened in a new tab."}
+          </p>
+          <p className="text-ink-mid mt-1">
+            Didn&apos;t open?{" "}
+            <a href={external.url} target="_blank" rel="noreferrer" className="underline hover:text-ink">
+              Open the Zoom link
+            </a>
+            .
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         {joinable ? (
           <button className="btn btn-primary text-base px-6 py-2.5" onClick={() => void join()} disabled={busy}>
-            {busy ? "Connecting…" : isLive ? "Join Live Call" : "Join call room"}
+            {busy ? "Connecting…" : hostedOnZoom ? "Join on Zoom" : isLive ? "Join Live Call" : "Join call room"}
+            {hostedOnZoom && !busy && <Icons.external className="h-4 w-4" />}
           </button>
         ) : (
           <p className="text-sm text-ink-mid">
-            The call room opens 15 minutes before start ({new Date(startsAt).toLocaleString()}).
+            {hostedOnZoom ? "The Zoom link opens" : "The call room opens"} 15 minutes before start ({formatLocal(startsAt, "datetime", tz)}).
           </p>
         )}
         <button className={`btn btn-sm ${isAttending ? "btn-secondary" : "btn-secondary"}`} onClick={() => void rsvp()} disabled={busy}>

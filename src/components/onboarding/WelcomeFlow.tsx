@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StarIcon, StarRow } from "@/components/ui/Star";
+import { TimeZonePicker } from "@/components/time/TimeZonePicker";
+import { detectTimeZone, zoneCity } from "@/lib/timezone";
 
 const UNLOCKS = [
   "Advanced Training",
@@ -12,13 +14,24 @@ const UNLOCKS = [
   "Call Recordings",
 ];
 
-export function WelcomeFlow({ name }: { name: string }) {
+const STEP_COUNT = 4;
+
+export function WelcomeFlow({ name, timezone: accountTimezone }: { name: string; timezone: string | null }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [headline, setHeadline] = useState("");
   const [location, setLocation] = useState("");
   const [bio, setBio] = useState("");
+  const [timezone, setTimezone] = useState(accountTimezone ?? "");
+  const [detected, setDetected] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Pre-fill from the device once mounted; the person confirms or changes it.
+  useEffect(() => {
+    const zone = detectTimeZone();
+    setDetected(zone);
+    if (!accountTimezone) setTimezone(zone);
+  }, [accountTimezone]);
 
   async function finish() {
     setSaving(true);
@@ -26,7 +39,7 @@ export function WelcomeFlow({ name }: { name: string }) {
       const res = await fetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ headline, location, bio }),
+        body: JSON.stringify({ headline, location, bio, timezone: timezone || undefined }),
       });
       const data = (await res.json().catch(() => ({}))) as { redirect?: string };
       router.push(data.redirect ?? "/dashboard");
@@ -50,7 +63,7 @@ export function WelcomeFlow({ name }: { name: string }) {
       <div className="w-full max-w-lg relative">
         {/* Step dots */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          {[0, 1, 2].map((i) => (
+          {Array.from({ length: STEP_COUNT }, (_, i) => (
             <span
               key={i}
               className={`h-1.5 rounded-full transition-all duration-300 ${
@@ -126,6 +139,32 @@ export function WelcomeFlow({ name }: { name: string }) {
 
         {step === 2 && (
           <div className="card p-10 animate-pop" key="s2">
+            <h2 className="text-2xl font-bold tracking-tight">What time zone are you in?</h2>
+            <p className="text-sm text-ink-mid mt-1 mb-6">
+              Live calls, 1-on-1 sessions and reminders will show in your local time.
+              {detected ? " We picked the zone your device reports — change it if that's not where you are." : ""}
+            </p>
+            <label className="label" htmlFor="timezone">Time zone</label>
+            <TimeZonePicker id="timezone" value={timezone} onChange={setTimezone} />
+            {detected && timezone && timezone !== detected && (
+              <p className="text-xs text-ink-dim mt-2">
+                Your device reports {zoneCity(detected)}.{" "}
+                <button type="button" className="underline hover:text-ink" onClick={() => setTimezone(detected)}>
+                  Use that instead
+                </button>
+              </p>
+            )}
+            <div className="flex gap-3 mt-8">
+              <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
+              <button className="btn btn-primary flex-1" onClick={() => setStep(3)} disabled={!timezone}>
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="card p-10 animate-pop" key="s3">
             <h2 className="text-2xl font-bold tracking-tight text-center">Stars unlock everything</h2>
             <p className="text-ink-mid text-center mt-3">
               Every Star you earn opens more of the academy. As you progress, you&apos;ll unlock:

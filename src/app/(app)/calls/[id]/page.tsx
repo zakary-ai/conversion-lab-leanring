@@ -8,6 +8,7 @@ import { LockedNotice } from "@/components/ui/Locked";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icons } from "@/components/ui/icons";
 import { CallRoom } from "@/components/calls/CallRoom";
+import { describeRule } from "@/lib/call-series";
 
 export default async function CallDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -21,9 +22,19 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
         orderBy: { rsvpAt: "asc" },
       },
       recordings: { where: { status: "PUBLISHED" } },
+      series: true,
     },
   });
   if (!call || call.status === "CANCELLED") notFound();
+
+  // For a repeating call, point at the next scheduled session in the series.
+  const nextInSeries = call.seriesId
+    ? await db.liveCall.findFirst({
+        where: { seriesId: call.seriesId, status: "SCHEDULED", scheduledAt: { gt: call.scheduledAt } },
+        orderBy: { scheduledAt: "asc" },
+        select: { id: true, scheduledAt: true },
+      })
+    : null;
 
   const access = canAccessCall(user, call);
   if (!access.allowed) {
@@ -33,7 +44,7 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
           <div className="p-6 border-b border-edge">
             <h1 className="text-xl font-bold">{call.title}</h1>
             <p className="text-sm text-ink-mid mt-1">
-              {formatDate(call.scheduledAt)} · {formatTime(call.scheduledAt)}
+              {formatDate(call.scheduledAt, user.timezone)} · {formatTime(call.scheduledAt, user.timezone)}
             </p>
           </div>
           <LockedNotice required={access.required ?? 0} current={user.starBalance} what="this call" />
@@ -62,16 +73,22 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <div className="min-w-0">
           <div className="card p-6 md:p-8">
-            {call.status === "LIVE" && <span className="chip chip-bad mb-3">● LIVE NOW</span>}
+            {(call.status === "LIVE" || call.seriesId || call.joinUrl) && (
+              <p className="flex flex-wrap items-center gap-1.5 mb-3">
+                {call.status === "LIVE" && <span className="chip chip-bad">● LIVE NOW</span>}
+                {call.seriesId && <span className="chip">Repeats</span>}
+                {call.joinUrl && <span className="chip">Hosted on Zoom</span>}
+              </p>
+            )}
             <h1 className="text-2xl font-bold tracking-tight">{call.title}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink-mid">
               <span className="flex items-center gap-1.5">
                 <Icons.calendar className="h-4 w-4" />
-                {formatDate(call.scheduledAt)}
+                {formatDate(call.scheduledAt, user.timezone)}
               </span>
               <span className="flex items-center gap-1.5">
                 <Icons.clock className="h-4 w-4" />
-                {formatTime(call.scheduledAt)} · {call.durationMin} min
+                {formatTime(call.scheduledAt, user.timezone)} · {call.durationMin} min
               </span>
               {call.host && (
                 <span className="flex items-center gap-1.5">
@@ -80,6 +97,19 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
                 </span>
               )}
             </div>
+            {call.series && (
+              <p className="text-xs text-ink-dim mt-3">
+                {describeRule(call.series)}
+                {nextInSeries && (
+                  <>
+                    {" · "}
+                    <Link href={`/calls/${nextInSeries.id}`} className="underline hover:text-ink">
+                      Next session {formatDate(nextInSeries.scheduledAt, user.timezone)}
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
             {call.description && (
               <p className="prose-sm-invert mt-5 whitespace-pre-line">{call.description}</p>
             )}
@@ -89,6 +119,7 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
               attending={attending}
               isLive={call.status === "LIVE"}
               startsAt={call.scheduledAt.toISOString()}
+              hostedOnZoom={Boolean(call.joinUrl)}
             />
           </div>
 

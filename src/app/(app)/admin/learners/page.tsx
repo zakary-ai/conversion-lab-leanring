@@ -14,7 +14,7 @@ export default async function AdminLearnersPage({
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
-  await requireRole("ADMIN");
+  const viewer = await requireRole("ADMIN");
   const { q } = await searchParams;
 
   const users = await db.user.findMany({
@@ -87,7 +87,7 @@ export default async function AdminLearnersPage({
                   </td>
                   <td className="px-4 py-3 text-ink-mid">{u.role === "LEARNER" ? `${progress}%` : "—"}</td>
                   <td className="px-4 py-3 text-ink-dim text-xs">
-                    {u.lastActiveAt ? timeAgo(u.lastActiveAt) : "Never"}
+                    {u.lastActiveAt ? timeAgo(u.lastActiveAt, viewer.timezone) : "Never"}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link href={`/admin/learners/${u.id}`} className="btn btn-secondary btn-sm">

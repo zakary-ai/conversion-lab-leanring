@@ -10,6 +10,7 @@ import { ProgressBar } from "@/components/ui/Progress";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icons } from "@/components/ui/icons";
 import { formatDate, formatTime } from "@/lib/format";
+import { describeTimeZone } from "@/lib/timezone";
 import { ProfileEditor } from "@/components/profile/ProfileEditor";
 import Link from "next/link";
 
@@ -82,6 +83,9 @@ export default async function ProfilePage() {
             {profile?.location && (
               <p className="text-xs text-ink-dim mt-1">📍 {profile.location}</p>
             )}
+            <p className="text-xs text-ink-dim mt-1">
+              🕒 {user.timezone ? `${describeTimeZone(user.timezone)} · ${user.timezone}` : "Time zone not set — pick one below"}
+            </p>
             <div className="flex items-center gap-3 mt-4">
               <StarRow earned={user.starBalance} total={Math.max(5, user.starBalance)} size="md" />
               <span className="text-sm font-bold text-accent-hi">
@@ -194,7 +198,7 @@ export default async function ProfilePage() {
                   {upcomingCalls[0].title}
                 </p>
                 <p className="text-xs text-ink-dim mt-1">
-                  {formatDate(upcomingCalls[0].scheduledAt)} · {formatTime(upcomingCalls[0].scheduledAt)}
+                  {formatDate(upcomingCalls[0].scheduledAt, user.timezone)} · {formatTime(upcomingCalls[0].scheduledAt, user.timezone)}
                 </p>
               </Link>
             </section>
@@ -215,7 +219,9 @@ export default async function ProfilePage() {
             linkedinUrl: profile?.linkedinUrl ?? "",
             videoIntroUrl: profile?.videoIntroUrl ?? "",
             availability: profile?.availability ?? "",
+            timezone: user.timezone ?? "",
           }}
+          isStaff={isStaff(user.role)}
         />
       </section>
     </div>

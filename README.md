@@ -60,12 +60,13 @@ Learners start at **0 Stars** and earn them by completing modules (all required 
 - **Learner dashboard**: next-star progress, continue learning, newly unlocked, next unlock, your next 1-on-1, upcoming calls, community activity
 - **Community**: sectioned channels (Community / Advanced / Staff) with star, role, read-only, private, and hidden restrictions; messages with reactions, threaded replies, edit/delete, pins, moderator deletion, mentions; light polling keeps chat live without page refreshes
 - **Direct messages**: member search, 1:1 conversations (schema supports group DMs later), unread counts, recently-active indicators
-- **Live calls**: scheduling, star gates, RSVPs, capacity, embedded call rooms through the RTC provider abstraction, recordings with their own star gates
+- **Live calls**: one-off or repeating (weekly rule in the admin's time zone, every occurrence created up front), star gates, RSVPs, capacity, hosted on Zoom when configured (one recurring Zoom meeting per series; the host gets the start link) or in embedded rooms through the RTC provider abstraction, recordings with their own star gates
+- **Time zones**: every account carries an IANA zone chosen during onboarding (editable on the profile); calls, sessions, chat timestamps and notifications render in it, and changing it also moves the person's 1-on-1 availability and upcoming bookings
 - **1-on-1s**: staff set weekly availability (timezone, session length, minimum notice) in their account; learners pick a coach and a slot in their own timezone; each booking creates a Zoom meeting through the meeting provider abstraction; cancellations, notifications, admin oversight, optional star gate
 - **Notifications**: in-app center + badge for stars, unlocks, quiz results, calls, DMs, mentions, replies, and 1-on-1 bookings (schema ready for email/push fan-out)
 - **Global search** (⌘K): only ever returns what the user can access
 - **Admin**: command center metrics + trends, visual training builder (create/edit/reorder/publish/archive, quiz editor, learner preview), star management on the ledger, learner management (progress, quiz performance, star history, manual adjustments, suspension, roles), calls + recordings, 1-on-1 bookings overview, platform settings, audit log
-- **First-run experience**: welcome → profile → star explainer → straight into Lesson 1
+- **First-run experience**: welcome → profile → time zone (pre-filled from the device, confirmed by the learner) → star explainer → straight into Lesson 1
 - **Auth**: signup/signin, forgot/reset password (via email provider abstraction; dev fallback logs the link), session management, suspension enforcement
 
 ## Configuration & integrations
@@ -76,7 +77,8 @@ External providers are integrated behind clean interfaces and degrade honestly w
 
 | Provider | Env vars | Without credentials |
 | --- | --- | --- |
-| Daily.co (live call rooms) | `DAILY_API_KEY`, `DAILY_DOMAIN` | Scheduling/RSVPs work; join screen shows a clear "provider not connected" notice |
+| Zoom (live calls + 1-on-1s) | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` | Calls and series are scheduled without a Zoom link; the admin sees an honest notice |
+| Daily.co (embedded call rooms, used when Zoom isn't configured) | `DAILY_API_KEY`, `DAILY_DOMAIN` | Scheduling/RSVPs work; join screen shows a clear "provider not connected" notice |
 | Zoom (1-on-1 meetings) | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` | Bookings, notifications and cancellations work; the session shows "video link not connected" instead of a link |
 | Resend (email) | `RESEND_API_KEY`, `EMAIL_FROM` | Password-reset links are logged to the server console in development |
 | S3-compatible storage | `S3_*` | Local `./storage` directory served via `/api/files` |

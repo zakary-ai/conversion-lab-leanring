@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icons } from "@/components/ui/icons";
 import { timeAgo } from "@/lib/format";
+import { useTimeZone } from "@/components/time/TimeZoneContext";
 
 type Notification = {
   id: string;
@@ -31,6 +32,7 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 export function NotificationsBell({ initialCount }: { initialCount: number }) {
+  const tz = useTimeZone();
   const [count, setCount] = useState(initialCount);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[] | null>(null);
@@ -130,7 +132,7 @@ export function NotificationsBell({ initialCount }: { initialCount: number }) {
                     {n.body && (
                       <span className="block text-xs text-ink-mid truncate mt-0.5">{n.body}</span>
                     )}
-                    <span className="block text-[11px] text-ink-dim mt-1">{timeAgo(n.createdAt)}</span>
+                    <span className="block text-[11px] text-ink-dim mt-1">{timeAgo(n.createdAt, tz)}</span>
                   </span>
                   {!n.readAt && <span className="ml-auto mt-1.5 h-2 w-2 rounded-full bg-accent shrink-0" />}
                 </Link>

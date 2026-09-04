@@ -62,8 +62,9 @@ export default async function AdminLearnerDetailPage({
           </h1>
           <p className="text-sm text-ink-mid">{user.email ?? "No email — signs in with access code"}</p>
           <p className="text-xs text-ink-dim mt-1">
-            Joined {formatDateShort(user.createdAt)} · Last active{" "}
-            {user.lastActiveAt ? timeAgo(user.lastActiveAt) : "never"}
+            Joined {formatDateShort(user.createdAt, actor.timezone)} · Last active{" "}
+            {user.lastActiveAt ? timeAgo(user.lastActiveAt, actor.timezone) : "never"} · Time zone{" "}
+            {user.timezone ?? "not set"}
           </p>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
@@ -122,7 +123,7 @@ export default async function AdminLearnerDetailPage({
                       {tx.type === "AUTOMATIC_REWARD"
                         ? "Automatic"
                         : `Manual by ${tx.createdBy?.name ?? "admin"}`}{" "}
-                      · {formatDateShort(tx.createdAt)} · balance {tx.previousBalance} → {tx.newBalance}
+                      · {formatDateShort(tx.createdAt, actor.timezone)} · balance {tx.previousBalance} → {tx.newBalance}
                     </span>
                   </span>
                 </li>
@@ -145,7 +146,7 @@ export default async function AdminLearnerDetailPage({
                     </span>
                     <span className="truncate">{a.quiz.title}</span>
                     <span className="text-xs text-ink-dim ml-auto shrink-0">
-                      {formatDateShort(a.startedAt)}
+                      {formatDateShort(a.startedAt, actor.timezone)}
                     </span>
                   </li>
                 ))}
@@ -163,7 +164,7 @@ export default async function AdminLearnerDetailPage({
                   <li key={p.id} className="text-sm">
                     <span className="font-medium">{p.lesson.title}</span>
                     <span className="text-xs text-ink-dim block">
-                      {p.lesson.module.title} · {p.completedAt ? formatDateShort(p.completedAt) : ""}
+                      {p.lesson.module.title} · {p.completedAt ? formatDateShort(p.completedAt, actor.timezone) : ""}
                     </span>
                   </li>
                 ))}

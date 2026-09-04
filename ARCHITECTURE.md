@@ -30,6 +30,8 @@ src/
 | `stars.ts` | Star ledger. `grantStars` writes a `StarTransaction` (with previous/new balance) and updates the cached `User.starBalance` in one DB transaction. `grantAutomaticReward` is idempotent via the unique constraint `(userId, sourceType, sourceId, type)` — a `P2002` violation means "already rewarded" and is swallowed. `adjustStarsManually` requires actor + reason and writes the audit log. After any increase, `recordUnlocks` diff-scans content between the old and new balance and writes `UnlockEvent`s + notifications. |
 | `progress.ts` | Lesson start/completion, module-completion detection (all required published lessons + all published quizzes passed), continue-learning and next-star targets. Completing a module calls `grantAutomaticReward` — safe to re-trigger forever. |
 | `booking.ts` | Pure, DST-aware slot engine for 1-on-1s: weekly windows in the host's IANA zone → UTC slots (`generateSlots`, `zonedTimeToUtc`), no date library. |
+| `call-series.ts` | Pure weekly-recurrence engine for live calls: rule → UTC occurrences (DST-aware via `booking.ts`), validation, human summary, Zoom `weekly_days` mapping. Series are bounded (≤ 52 occurrences, ≤ 1 year) so everything is created up front. |
+| `call-service.ts` | Live call operations: one-off calls and series (every occurrence is a `LiveCall`), Zoom meetings (single or recurring, best effort, host's own seat when set), cancel/delete/update with Zoom kept in step, per-zone announcements. |
 | `booking-service.ts` | Booking operations: bookable hosts, slot lookup, `createBooking` (re-validates the slot, per-host advisory lock + unique `slotKey`, best-effort Zoom meeting, notifications, audit), `cancelBooking`. |
 | `settings.ts` | Key-value `PlatformSetting` store with typed defaults. Admin-configurable business rules (1-on-1 booking star requirement, passing score, star deduction policy, community permissions, branding). |
 | `notifications.ts` | In-app notifications; rows track `emailedAt`/`pushedAt` so email/push delivery can fan out later without schema changes. |
@@ -70,6 +72,8 @@ Relational throughout (see `prisma/schema.prisma`); JSON is used only for genuin
 - `DmConversation.isGroup` + participant rows — group DMs are a flag flip, not a migration.
 - `Booking.meetingProvider/meetingId` — provider-agnostic, so Google Meet or Teams can back 1-on-1s by implementing `MeetingProvider`.
 - `HostAvailability`/`AvailabilityWindow` — weekly rules in the host's IANA zone; `src/lib/booking.ts` is a pure, DST-aware slot engine (no date library) that can grow date overrides later.
+- `CallSeries` + `LiveCall.seriesId/seriesSlot` — a repeating call is a rule plus its materialized occurrences, so RSVPs, gates, recordings and notifications need no special cases; `LiveCall.meetingId/meetingOccurrenceId/joinUrl/startUrl` hold the Zoom meeting (shared across a series, with a per-occurrence id for single-session edits and cancellations).
+- `User.timezone` — the account zone chosen in onboarding. `src/lib/user-timezone.ts` mirrors changes onto `HostAvailability.timezone` and upcoming `Booking.learnerTz`; `src/lib/format.ts` and the `TimeZoneProvider` context render every time in it (browser zone as the fallback until one is set).
 - `Achievement`, `StarRule` — future gamification (badges, custom milestone rules) staked out but not cluttering the MVP UI.
 - `Notification.emailedAt/pushedAt` — future email/push delivery tracking.
 

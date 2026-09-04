@@ -6,7 +6,7 @@ import { timeAgo } from "@/lib/format";
 export const metadata = { title: "Admin · Overview" };
 
 export default async function AdminOverviewPage() {
-  await requireRole("MODERATOR");
+  const viewer = await requireRole("MODERATOR");
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   const [
@@ -136,7 +136,7 @@ export default async function AdminOverviewPage() {
                     {log.action}
                   </code>
                   <span className="text-ink-mid truncate">{log.actor?.name ?? "System"}</span>
-                  <span className="text-xs text-ink-dim ml-auto shrink-0">{timeAgo(log.createdAt)}</span>
+                  <span className="text-xs text-ink-dim ml-auto shrink-0">{timeAgo(log.createdAt, viewer.timezone)}</span>
                 </li>
               ))}
             </ul>

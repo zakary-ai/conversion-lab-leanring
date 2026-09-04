@@ -101,7 +101,7 @@ export default async function AdminOneOnOnesPage() {
                   <td className="px-4 py-3 text-ink-mid">{a ? `${a.slotMinutes} min` : "—"}</td>
                   <td className="px-4 py-3 text-ink-mid">{a ? a._count.windows : "—"}</td>
                   <td className="px-4 py-3 font-semibold">{s._count.hostedBookings}</td>
-                  <td className="px-4 py-3 text-ink-dim text-xs">{a ? timeAgo(a.updatedAt) : "—"}</td>
+                  <td className="px-4 py-3 text-ink-dim text-xs">{a ? timeAgo(a.updatedAt, user.timezone) : "—"}</td>
                 </tr>
               );
             })}

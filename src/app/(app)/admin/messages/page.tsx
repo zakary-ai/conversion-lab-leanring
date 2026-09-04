@@ -13,7 +13,7 @@ export const metadata = { title: "Admin · Message Oversight" };
  * trust & safety. Every conversation view is written to the audit log.
  */
 export default async function AdminMessagesPage() {
-  await requireRole("SUPER_ADMIN");
+  const viewer = await requireRole("SUPER_ADMIN");
 
   const conversations = await db.dmConversation.findMany({
     orderBy: { updatedAt: "desc" },
@@ -77,7 +77,7 @@ export default async function AdminMessagesPage() {
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-xs text-ink-dim">{c._count.messages} messages</p>
-                  {last && <p className="text-[11px] text-ink-dim mt-0.5">{timeAgo(last.createdAt)}</p>}
+                  {last && <p className="text-[11px] text-ink-dim mt-0.5">{timeAgo(last.createdAt, viewer.timezone)}</p>}
                 </div>
               </Link>
             );

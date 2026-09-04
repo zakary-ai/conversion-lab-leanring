@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { DAY_NAMES, SLOT_LENGTH_OPTIONS, hhmmToMinutes, minutesToHHMM, type WeeklyWindow } from "@/lib/booking";
-import { browserTimeZone } from "./LocalTime";
+import { TimeZonePicker } from "@/components/time/TimeZonePicker";
+import { detectTimeZone, describeTimeZone } from "@/lib/timezone";
 
 export type AvailabilityInitial = {
   timezone: string;
@@ -32,43 +33,33 @@ function toRanges(windows: WeeklyWindow[]): Range[][] {
 
 export function AvailabilityEditor({
   initial,
+  accountTimeZone,
   providerConfigured,
   providerName,
   hasDefaultMeetingUser,
 }: {
   initial: AvailabilityInitial | null;
+  /** The host's account zone — the default for new availability */
+  accountTimeZone: string | null;
   providerConfigured: boolean;
   providerName: string;
   hasDefaultMeetingUser: boolean;
 }) {
   const router = useRouter();
-  const [timezone, setTimezone] = useState(initial?.timezone ?? "UTC");
+  const [timezone, setTimezone] = useState(initial?.timezone ?? accountTimeZone ?? "");
   const [slotMinutes, setSlotMinutes] = useState(initial?.slotMinutes ?? 30);
   const [minNoticeMinutes, setMinNotice] = useState(initial?.minNoticeMinutes ?? 120);
   const [accepting, setAccepting] = useState(initial?.acceptingBookings ?? false);
   const [zoomUserId, setZoomUserId] = useState(initial?.zoomUserId ?? "");
   const [days, setDays] = useState<Range[][]>(() => toRanges(initial?.windows ?? DEFAULT_WINDOWS));
-  const [zones, setZones] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Browser-only: default new hosts to their own zone and populate the picker.
+  // New host with no account zone yet: fall back to the device zone once mounted.
   useEffect(() => {
-    if (!initial) setTimezone(browserTimeZone());
-    try {
-      const list = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
-      setZones(list);
-    } catch {
-      setZones([]);
-    }
-  }, [initial]);
-
-  const zoneOptions = useMemo(() => {
-    const set = new Set(zones);
-    set.add(timezone);
-    return Array.from(set).sort();
-  }, [zones, timezone]);
+    if (!initial && !accountTimeZone) setTimezone(detectTimeZone());
+  }, [initial, accountTimeZone]);
 
   const validation = useMemo(() => {
     const windows: WeeklyWindow[] = [];
@@ -191,16 +182,13 @@ export function AvailabilityEditor({
         <p className="text-xs text-ink-dim mb-5">Windows below are in your timezone. Existing bookings are kept when you change availability.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label" htmlFor="tz">Timezone</label>
-            {zoneOptions.length > 1 ? (
-              <select id="tz" className="input" value={timezone} onChange={(e) => { setTimezone(e.target.value); setSaved(false); }}>
-                {zoneOptions.map((z) => (
-                  <option key={z} value={z}>{z}</option>
-                ))}
-              </select>
-            ) : (
-              <input id="tz" className="input" value={timezone} onChange={(e) => { setTimezone(e.target.value); setSaved(false); }} placeholder="America/New_York" />
-            )}
+            <label className="label" htmlFor="tz">Time zone</label>
+            <TimeZonePicker id="tz" value={timezone} onChange={(tz) => { setTimezone(tz); setSaved(false); }} showPreview={false} />
+            <p className="text-xs text-ink-dim mt-1">
+              {accountTimeZone && timezone && timezone !== accountTimeZone
+                ? `Differs from your account zone (${describeTimeZone(accountTimeZone)}). Change that on your profile to move both.`
+                : "Follows your account time zone. Changing it on your profile updates this too."}
+            </p>
           </div>
           <div>
             <label className="label" htmlFor="slot">Session length</label>

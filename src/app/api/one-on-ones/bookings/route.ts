@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { withAuth, json, apiError } from "@/lib/api";
-import { isValidTimeZone } from "@/lib/booking";
+import { isValidTimeZone, resolveTimeZone } from "@/lib/timezone";
 import { BookingRuleError, SlotUnavailableError, createBooking, serializeBooking } from "@/lib/booking-service";
 
 const schema = z.object({
   hostId: z.string().min(1),
   startsAt: z.string().datetime(),
   note: z.string().trim().max(1000).optional(),
-  learnerTz: z.string().refine(isValidTimeZone, "Unknown timezone"),
+  // Zone the learner saw the slot in. Optional: defaults to the account zone.
+  learnerTz: z.string().refine(isValidTimeZone, "Unknown timezone").optional(),
 });
 
 /** Book a slot with a host. Creates the meeting link through the provider when configured. */
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
         hostId: body.hostId,
         startsAt: new Date(body.startsAt),
         note: body.note,
-        learnerTz: body.learnerTz,
+        learnerTz: body.learnerTz ?? resolveTimeZone(user.timezone),
       });
       return json({ booking: serializeBooking(booking, { includeStartUrl: false }), video });
     } catch (err) {

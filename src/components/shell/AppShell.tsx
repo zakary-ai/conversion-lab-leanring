@@ -8,12 +8,15 @@ import { StarIcon } from "@/components/ui/Star";
 import { Avatar } from "@/components/ui/Avatar";
 import { NotificationsBell } from "./NotificationsBell";
 import { CommandPalette } from "./CommandPalette";
+import { TimeZoneProvider } from "@/components/time/TimeZoneContext";
 
 export type ShellUser = {
   id: string;
   name: string;
   role: string;
   starBalance: number;
+  // Account zone (null until chosen); every client component formats times with it
+  timezone: string | null;
   isStaff: boolean;
   isAdmin: boolean;
 };
@@ -150,6 +153,7 @@ export function AppShell({
   );
 
   return (
+    <TimeZoneProvider timezone={user.timezone}>
     <div className="min-h-dvh flex">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-edge bg-surface/60 px-3 py-5 sticky top-0 h-dvh overflow-y-auto">
@@ -219,5 +223,6 @@ export function AppShell({
 
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </div>
+    </TimeZoneProvider>
   );
 }

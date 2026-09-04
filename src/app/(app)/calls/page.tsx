@@ -64,7 +64,13 @@ export default async function CallsPage() {
                 <div key={call.id} className={`card p-6 ${!access.allowed ? "opacity-75" : "card-hover"}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      {isLive && <span className="chip chip-bad mb-2">● LIVE NOW</span>}
+                      {(isLive || call.seriesId || call.joinUrl) && (
+                        <p className="flex flex-wrap items-center gap-1.5 mb-2">
+                          {isLive && <span className="chip chip-bad">● LIVE NOW</span>}
+                          {call.seriesId && <span className="chip">Repeats</span>}
+                          {call.joinUrl && <span className="chip">On Zoom</span>}
+                        </p>
+                      )}
                       <h2 className="font-bold text-lg leading-snug">{call.title}</h2>
                       {call.description && (
                         <p className="text-sm text-ink-mid mt-1 line-clamp-2">{call.description}</p>
@@ -75,11 +81,11 @@ export default async function CallsPage() {
                   <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-dim">
                     <span className="flex items-center gap-1.5">
                       <Icons.calendar className="h-3.5 w-3.5" />
-                      {formatDate(call.scheduledAt)}
+                      {formatDate(call.scheduledAt, user.timezone)}
                     </span>
                     <span className="flex items-center gap-1.5">
                       <Icons.clock className="h-3.5 w-3.5" />
-                      {formatTime(call.scheduledAt)} · {call.durationMin} min
+                      {formatTime(call.scheduledAt, user.timezone)} · {call.durationMin} min
                     </span>
                   </div>
                   <div className="mt-4 flex items-center justify-between">
@@ -121,7 +127,7 @@ export default async function CallsPage() {
                   <p className="chip mb-3">Past call</p>
                   <h3 className="font-bold leading-snug">{call.title}</h3>
                   <p className="text-xs text-ink-dim mt-1">
-                    {formatDate(call.scheduledAt)}
+                    {formatDate(call.scheduledAt, user.timezone)}
                     {call.host && ` · ${call.host.name}`}
                   </p>
                   {recording ? (

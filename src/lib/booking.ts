@@ -20,15 +20,9 @@ export const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 
-export function isValidTimeZone(tz: string): boolean {
-  if (!tz || tz.length > 64) return false;
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
+// Zone validation lives with the other zone helpers; re-exported so existing
+// imports keep working.
+export { isValidTimeZone } from "./timezone";
 
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 function formatterFor(timeZone: string) {

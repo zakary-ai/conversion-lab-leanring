@@ -28,6 +28,7 @@ export default async function AvailabilityPage() {
         </p>
       </header>
       <AvailabilityEditor
+        accountTimeZone={user.timezone}
         initial={
           availability
             ? {

@@ -66,7 +66,7 @@ export default async function NotificationsPage() {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold leading-snug">{n.title}</span>
                 {n.body && <span className="block text-sm text-ink-mid mt-0.5">{n.body}</span>}
-                <span className="block text-xs text-ink-dim mt-1">{timeAgo(n.createdAt)}</span>
+                <span className="block text-xs text-ink-dim mt-1">{timeAgo(n.createdAt, user.timezone)}</span>
               </span>
               {!n.readAt && <span className="mt-2 h-2 w-2 rounded-full bg-accent shrink-0" />}
             </Link>

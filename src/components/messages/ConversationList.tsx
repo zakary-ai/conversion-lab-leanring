@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icons } from "@/components/ui/icons";
 import { timeAgo } from "@/lib/format";
+import { useTimeZone } from "@/components/time/TimeZoneContext";
 
 type Conversation = {
   id: string;
@@ -27,6 +28,7 @@ function isRecentlyActive(lastActiveAt: string | null) {
 }
 
 function ConversationListInner() {
+  const tz = useTimeZone();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -192,7 +194,7 @@ function ConversationListInner() {
                     </p>
                     {c.lastMessage && (
                       <span className="text-[10px] text-ink-dim shrink-0">
-                        {timeAgo(c.lastMessage.createdAt)}
+                        {timeAgo(c.lastMessage.createdAt, tz)}
                       </span>
                     )}
                   </div>

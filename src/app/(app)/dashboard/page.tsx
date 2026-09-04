@@ -172,7 +172,7 @@ export default async function DashboardPage() {
                         <p className="text-sm font-semibold truncate">{u.title}</p>
                         <p className="text-xs text-ink-dim">
                           Unlocked at {u.atStars} {u.atStars === 1 ? "Star" : "Stars"} ·{" "}
-                          {timeAgo(u.createdAt)}
+                          {timeAgo(u.createdAt, user.timezone)}
                         </p>
                       </div>
                     </li>
@@ -289,11 +289,11 @@ export default async function DashboardPage() {
                       <p className="text-xs text-ink-dim mt-1 flex items-center gap-2 flex-wrap">
                         <span className="flex items-center gap-1">
                           <Icons.calendar className="h-3 w-3" />
-                          {formatDate(call.scheduledAt)}
+                          {formatDate(call.scheduledAt, user.timezone)}
                         </span>
                         <span className="flex items-center gap-1">
                           <Icons.clock className="h-3 w-3" />
-                          {formatTime(call.scheduledAt)}
+                          {formatTime(call.scheduledAt, user.timezone)}
                         </span>
                       </p>
                       <p className="text-xs text-ink-dim mt-0.5">
@@ -327,7 +327,7 @@ export default async function DashboardPage() {
                         <Avatar name={m.user.name} size="xs" />
                         <span className="text-xs font-semibold">{m.user.name}</span>
                         <span className="text-[11px] text-ink-dim">
-                          #{m.channel.name} · {timeAgo(m.createdAt)}
+                          #{m.channel.name} · {timeAgo(m.createdAt, user.timezone)}
                         </span>
                       </div>
                       <p className="text-xs text-ink-mid mt-1.5 line-clamp-2 group-hover:text-ink transition-colors">

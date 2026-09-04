@@ -6,7 +6,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Icons } from "@/components/ui/icons";
 import { BOOKING_HORIZON_DAYS } from "@/lib/booking";
 import type { BookableHost, BookingRow } from "@/lib/booking-service";
-import { browserTimeZone, formatLocal } from "./LocalTime";
+import { useTimeZone } from "@/components/time/TimeZoneContext";
+import { formatLocal } from "./LocalTime";
 
 type ApiSlot = { startsAt: string; endsAt: string };
 type Done = { booking: BookingRow; video: { configured: boolean; message?: string } };
@@ -18,10 +19,15 @@ function startOfLocalDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+/** Calendar-day key of an instant as seen in `tz`, so slots group under the right column. */
+function dayKey(d: Date, tz: string) {
+  return d.toLocaleDateString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
 /**
  * Calendly-style picker: choose a host, page through weeks, click a slot,
- * confirm. All times render in the browser's timezone; the host's zone is
- * shown alongside on the confirm step.
+ * confirm. All times render in the viewer's zone (account zone, else the
+ * browser's); the host's zone is shown alongside on the confirm step.
  */
 export function BookingScheduler({ hosts }: { hosts: BookableHost[] }) {
   const router = useRouter();
@@ -34,9 +40,7 @@ export function BookingScheduler({ hosts }: { hosts: BookableHost[] }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
-  const [tz, setTz] = useState("UTC");
-
-  useEffect(() => setTz(browserTimeZone()), []);
+  const tz = useTimeZone() ?? "UTC";
 
   const host = hosts.find((h) => h.id === hostId) ?? null;
   const weekStart = useMemo(() => new Date(startOfLocalDay(new Date()).getTime() + week * 7 * DAY), [week]);
@@ -74,14 +78,14 @@ export function BookingScheduler({ hosts }: { hosts: BookableHost[] }) {
     const groups: { key: string; date: Date; slots: ApiSlot[] }[] = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(weekStart.getTime() + i * DAY);
-      groups.push({ key: date.toDateString(), date, slots: [] });
+      groups.push({ key: dayKey(date, tz), date, slots: [] });
     }
     for (const s of slots ?? []) {
-      const key = new Date(s.startsAt).toDateString();
+      const key = dayKey(new Date(s.startsAt), tz);
       groups.find((g) => g.key === key)?.slots.push(s);
     }
     return groups;
-  }, [slots, weekStart]);
+  }, [slots, weekStart, tz]);
 
   async function book() {
     if (!selected || !host) return;
@@ -132,7 +136,7 @@ export function BookingScheduler({ hosts }: { hosts: BookableHost[] }) {
         </p>
         <p className="font-bold text-lg">1-on-1 with {b.host.name}</p>
         <p className="text-sm text-ink-mid mt-1">
-          {formatLocal(b.startsAt, "weekday")} at {formatLocal(b.startsAt, "time")} ({tz}) · {b.durationMin} min
+          {formatLocal(b.startsAt, "weekday", tz)} at {formatLocal(b.startsAt, "time", tz)} ({tz}) · {b.durationMin} min
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {b.joinUrl ? (
@@ -195,7 +199,7 @@ export function BookingScheduler({ hosts }: { hosts: BookableHost[] }) {
                 ‹
               </button>
               <span className="text-xs text-ink-mid min-w-[140px] text-center">
-                {formatLocal(weekStart.toISOString(), "date")} – {formatLocal(new Date(weekEnd.getTime() - 1).toISOString(), "date")}
+                {formatLocal(weekStart.toISOString(), "date", tz)} – {formatLocal(new Date(weekEnd.getTime() - 1).toISOString(), "date", tz)}
               </span>
               <button className="btn btn-ghost btn-sm" disabled={week >= WEEKS - 1} onClick={() => setWeek((w) => w + 1)} aria-label="Next week">
                 ›
@@ -212,8 +216,8 @@ export function BookingScheduler({ hosts }: { hosts: BookableHost[] }) {
               {days.map((d) => (
                 <div key={d.key} className="min-w-0">
                   <p className="text-[11px] text-ink-dim font-semibold text-center mb-2 uppercase tracking-wide">
-                    {d.date.toLocaleDateString(undefined, { weekday: "short" })}
-                    <span className="block text-ink text-sm normal-case tracking-normal">{d.date.getDate()}</span>
+                    {d.date.toLocaleDateString(undefined, { weekday: "short", timeZone: tz })}
+                    <span className="block text-ink text-sm normal-case tracking-normal">{d.date.toLocaleDateString(undefined, { day: "numeric", timeZone: tz })}</span>
                   </p>
                   <div className="space-y-1.5">
                     {loading && slots === null ? (
@@ -231,7 +235,7 @@ export function BookingScheduler({ hosts }: { hosts: BookableHost[] }) {
                               : "bg-overlay border-edge hover:border-accent/50 hover:text-accent-hi"
                           }`}
                         >
-                          {formatLocal(s.startsAt, "time")}
+                          {formatLocal(s.startsAt, "time", tz)}
                         </button>
                       ))
                     )}
@@ -248,7 +252,7 @@ export function BookingScheduler({ hosts }: { hosts: BookableHost[] }) {
           {selected && host && (
             <div className="card-raised p-4 mt-5 animate-fade">
               <p className="font-semibold">
-                {formatLocal(selected.startsAt, "weekday")} · {formatLocal(selected.startsAt, "time")} – {formatLocal(selected.endsAt, "time")}
+                {formatLocal(selected.startsAt, "weekday", tz)} · {formatLocal(selected.startsAt, "time", tz)} – {formatLocal(selected.endsAt, "time", tz)}
               </p>
               <p className="text-xs text-ink-dim mt-0.5">
                 Your time ({tz}). {host.name}&apos;s time ({host.timezone}):{" "}

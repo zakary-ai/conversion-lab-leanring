@@ -5,7 +5,7 @@ import { formatDateShort, formatTime } from "@/lib/format";
 export const metadata = { title: "Admin · Audit Log" };
 
 export default async function AdminAuditPage() {
-  await requireRole("ADMIN");
+  const viewer = await requireRole("ADMIN");
   const logs = await db.auditLog.findMany({
     orderBy: { createdAt: "desc" },
     take: 200,
@@ -56,7 +56,7 @@ export default async function AdminAuditPage() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-xs text-ink-dim whitespace-nowrap">
-                  {formatDateShort(log.createdAt)} {formatTime(log.createdAt)}
+                  {formatDateShort(log.createdAt, viewer.timezone)} {formatTime(log.createdAt, viewer.timezone)}
                 </td>
               </tr>
             ))}

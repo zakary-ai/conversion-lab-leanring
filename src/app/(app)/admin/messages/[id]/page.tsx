@@ -82,7 +82,7 @@ export default async function AdminConversationPage({
                 <li key={m.id}>
                   {newDay && (
                     <p className="text-center text-[11px] text-ink-dim my-3">
-                      {formatDateShort(m.createdAt)}
+                      {formatDateShort(m.createdAt, actor.timezone)}
                     </p>
                   )}
                   <div className="flex gap-3">
@@ -90,7 +90,7 @@ export default async function AdminConversationPage({
                     <div className="min-w-0">
                       <p className="text-xs">
                         <span className="font-bold">{m.sender.name}</span>
-                        <span className="text-ink-dim ml-2">{formatTime(m.createdAt)}</span>
+                        <span className="text-ink-dim ml-2">{formatTime(m.createdAt, actor.timezone)}</span>
                         {m.editedAt && <span className="text-ink-dim ml-1">(edited)</span>}
                       </p>
                       <p className={`text-sm mt-0.5 whitespace-pre-wrap break-words ${m.deletedAt ? "italic text-ink-dim" : "text-ink-mid"}`}>

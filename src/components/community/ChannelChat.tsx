@@ -6,6 +6,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Icons } from "@/components/ui/icons";
 import { StarIcon } from "@/components/ui/Star";
 import { timeAgo } from "@/lib/format";
+import { useTimeZone } from "@/components/time/TimeZoneContext";
 
 export type ChatMessage = {
   id: string;
@@ -322,6 +323,7 @@ function MessageRow({
   onEditSave: () => void;
   onEditCancel: () => void;
 }) {
+  const tz = useTimeZone();
   const [showPicker, setShowPicker] = useState(false);
   const own = m.author.id === me.id;
   const isStaffAuthor = m.author.role === "ADMIN" || m.author.role === "SUPER_ADMIN" || m.author.role === "MODERATOR";
@@ -357,7 +359,7 @@ function MessageRow({
                 {m.author.starBalance}
               </span>
             )}
-            <span className="text-[11px] text-ink-dim ml-2">{timeAgo(m.createdAt)}</span>
+            <span className="text-[11px] text-ink-dim ml-2">{timeAgo(m.createdAt, tz)}</span>
             {m.pinned && <Icons.pin className="h-3 w-3 inline ml-1.5 text-accent-hi" />}
           </p>
         )}

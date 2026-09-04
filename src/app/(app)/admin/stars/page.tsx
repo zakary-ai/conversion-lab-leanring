@@ -8,7 +8,7 @@ import { StarIcon } from "@/components/ui/Star";
 export const metadata = { title: "Admin · Stars" };
 
 export default async function AdminStarsPage() {
-  await requireRole("ADMIN");
+  const viewer = await requireRole("ADMIN");
 
   const [learners, recentTx, totals] = await Promise.all([
     db.user.findMany({
@@ -92,7 +92,7 @@ export default async function AdminStarsPage() {
                           {u.starTransactions[0].amount > 0 ? "+" : ""}
                           {u.starTransactions[0].amount}
                         </span>{" "}
-                        {u.starTransactions[0].reason} · {timeAgo(u.starTransactions[0].createdAt)}
+                        {u.starTransactions[0].reason} · {timeAgo(u.starTransactions[0].createdAt, viewer.timezone)}
                       </>
                     ) : (
                       "—"
@@ -128,7 +128,7 @@ export default async function AdminStarsPage() {
                   <span className="block text-xs text-ink-mid leading-snug">{tx.reason}</span>
                   <span className="block text-[11px] text-ink-dim mt-0.5">
                     {tx.type === "AUTOMATIC_REWARD" ? "Automatic" : `By ${tx.createdBy?.name ?? "admin"}`} ·{" "}
-                    {timeAgo(tx.createdAt)}
+                    {timeAgo(tx.createdAt, viewer.timezone)}
                   </span>
                 </span>
               </li>

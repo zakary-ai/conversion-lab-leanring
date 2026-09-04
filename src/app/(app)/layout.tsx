@@ -38,6 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         name: user.name,
         role: user.role,
         starBalance: user.starBalance,
+        timezone: user.timezone,
         isStaff: isAdmin(user.role) || user.role === "MODERATOR",
         isAdmin: isAdmin(user.role),
       }}

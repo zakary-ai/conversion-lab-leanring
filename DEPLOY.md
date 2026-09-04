@@ -50,8 +50,8 @@ Everything below is off by default and degrades honestly (clear in-app notices, 
 
 | Feature | Env vars | Where to get them |
 | --- | --- | --- |
-| Embedded live call rooms | `DAILY_API_KEY`, `DAILY_DOMAIN` | [daily.co](https://www.daily.co) dashboard |
-| Zoom links for 1-on-1 bookings | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` | [Zoom App Marketplace](https://marketplace.zoom.us) → Develop → Build App → **Server-to-Server OAuth** (scopes `meeting:write:admin`, `meeting:delete:admin`). `ZOOM_USER_ID` is the email of the licensed user meetings are created under; hosts can override it with their own seat in **1-on-1s → Manage availability** |
+| Embedded live call rooms (used when Zoom isn't configured) | `DAILY_API_KEY`, `DAILY_DOMAIN` | [daily.co](https://www.daily.co) dashboard |
+| Zoom-hosted live calls (one-off and repeating) and 1-on-1 bookings | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` | [Zoom App Marketplace](https://marketplace.zoom.us) → Develop → Build App → **Server-to-Server OAuth** (scopes `meeting:write:admin`, `meeting:update:admin`, `meeting:delete:admin`). A repeating call becomes one Zoom recurring meeting; the host opens the start link from the call page. `ZOOM_USER_ID` is the email of the licensed user meetings are created under; hosts can override it with their own seat in **1-on-1s → Manage availability** |
 | Password-reset & notification email | `RESEND_API_KEY`, `EMAIL_FROM` | [resend.com](https://resend.com) (verify a sender domain) |
 | File uploads (training videos, resumes, attachments) | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | any S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2) |
 
@@ -61,4 +61,6 @@ Everything below is off by default and degrades honestly (clear in-app notices, 
 - **Training video uploads**: admins can upload video files directly to video lessons (Course Builder → lesson → Video → "Upload file"). In development the file lands in `./storage`. In production S3-compatible storage is **required**: Vercel caps request bodies at ~4.5 MB, so the browser uploads straight to the bucket via a presigned `PUT` — set the bucket's CORS policy to allow `PUT` (and header `Content-Type`) from your app origin. Playback redirects to a short-lived presigned URL, so the bucket can stay fully private.
 - **DEMO_MODE**: with it set to `false`, the demo endpoint returns 404 — the demo accounts themselves remain and can still sign in with their password, so also change or remove them (Admin → Learners) for a real launch.
 - **Schema changes on an existing database**: this version removed the resource library and job board tables and some notification types. On a database that already has data, run `npx prisma db push --accept-data-loss` (back up first); if the push complains about `NotificationType`, delete rows with the removed types (`JOB_UNLOCKED`, `NEW_JOB`, `APPLICATION_UPDATE`) and re-run.
+- **Recurring calls tables**: this version also adds `CallSeries` and nullable Zoom columns on `LiveCall`; `npm run db:push` adds them without data loss.
+- **Time zone column**: this version adds a nullable `User.timezone`. `npm run db:push` adds it without data loss; existing accounts keep browser-zone display until they pick a zone on their profile.
 - **Realtime**: chat/notifications use light polling and work on serverless out of the box. For multi-region scale, swap the polling transport for SSE/WebSockets behind the same client hooks.

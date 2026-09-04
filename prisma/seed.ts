@@ -13,6 +13,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { localDateParts, slotKeyFor, zonedTimeToUtc } from "../src/lib/booking";
+import { addDaysYmd, seriesOccurrences, type SeriesRule } from "../src/lib/call-series";
 
 const db = new PrismaClient();
 
@@ -85,7 +86,8 @@ async function main() {
     name: string,
     role: "SUPER_ADMIN" | "ADMIN" | "MODERATOR" | "LEARNER",
     stars: number,
-    profile: { headline?: string; bio?: string; location?: string; skills?: string[]; salesExperience?: string; resumeUrl?: string; linkedinUrl?: string; availability?: string }
+    profile: { headline?: string; bio?: string; location?: string; skills?: string[]; salesExperience?: string; resumeUrl?: string; linkedinUrl?: string; availability?: string },
+    timezone = "America/New_York"
   ) =>
     db.user.create({
       data: {
@@ -94,6 +96,7 @@ async function main() {
         role,
         passwordHash: password,
         starBalance: stars,
+        timezone,
         onboardedAt: daysAgo(30),
         lastActiveAt: daysAgo(0, 10),
         profile: { create: profile },
@@ -109,11 +112,11 @@ async function main() {
   });
   const moderator = await mkUser("morgan@demo.conversionlab.io", "Morgan Hayes", "MODERATOR", 0, {
     headline: "Community Lead",
-  });
+  }, "America/Chicago");
   const jordan = await mkUser("jordan@demo.conversionlab.io", "Jordan Lee", "LEARNER", 0, {
     headline: "New to sales, all in",
     location: "Denver, CO",
-  });
+  }, "America/Denver");
   const alex = await mkUser("alex@demo.conversionlab.io", "Alex Carter", "LEARNER", 2, {
     headline: "SDR leveling up to closer",
     bio: "Two years setting appointments for a SaaS startup. Here to master discovery and closing so I can move into an AE seat.",
@@ -123,7 +126,7 @@ async function main() {
     resumeUrl: "https://example.com/resumes/alex-carter.pdf",
     linkedinUrl: "https://linkedin.com/in/alexcarter-demo",
     availability: "Evenings & weekends while employed",
-  });
+  }, "America/Chicago");
   const taylor = await mkUser("taylor@demo.conversionlab.io", "Taylor Brooks", "LEARNER", 5, {
     headline: "High-ticket closer · $2.1M closed in 2025",
     bio: "Closed for three coaching offers. Looking for my next high-ticket opportunity with a serious team.",
@@ -720,6 +723,45 @@ async function main() {
       attendees: { create: [{ userId: taylor.id }] },
     },
   });
+  // A repeating call: every Monday at 6 PM Eastern for eight weeks, starting next Monday.
+  const todayNy = localDateParts("America/New_York", new Date());
+  const todayYmd = `${todayNy.year}-${String(todayNy.month).padStart(2, "0")}-${String(todayNy.day).padStart(2, "0")}`;
+  const nextMonday = addDaysYmd(todayYmd, ((1 - todayNy.weekday + 7) % 7) || 7);
+  const standupRule: SeriesRule = {
+    timezone: "America/New_York",
+    daysOfWeek: [1],
+    intervalWeeks: 1,
+    startMinute: 18 * 60,
+    startsOn: nextMonday,
+    endsOn: addDaysYmd(nextMonday, 7 * 8 - 1),
+  };
+  const standup = await db.callSeries.create({
+    data: {
+      title: "Monday Momentum — Weekly Pipeline Review",
+      description: "Start the week with live pipeline reviews: bring one stalled deal and leave with a next step.",
+      hostId: moderator.id,
+      ...standupRule,
+      durationMin: 45,
+      minStars: 0,
+      recordingEnabled: true,
+      calls: {
+        create: seriesOccurrences(standupRule).map((at) => ({
+          title: "Monday Momentum — Weekly Pipeline Review",
+          description: "Start the week with live pipeline reviews: bring one stalled deal and leave with a next step.",
+          hostId: moderator.id,
+          scheduledAt: at,
+          seriesSlot: at,
+          durationMin: 45,
+          minStars: 0,
+          recordingEnabled: true,
+        })),
+      },
+    },
+    include: { calls: { orderBy: { scheduledAt: "asc" }, take: 1 } },
+  });
+  if (standup.calls[0]) {
+    await db.callAttendee.createMany({ data: [alex.id, taylor.id].map((userId) => ({ callId: standup.calls[0].id, userId })) });
+  }
   const pastCall = await db.liveCall.create({
     data: {
       title: "Cold Calling Roleplay",

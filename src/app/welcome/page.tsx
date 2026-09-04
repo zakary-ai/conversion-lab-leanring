@@ -7,5 +7,5 @@ export const metadata = { title: "Welcome" };
 export default async function WelcomePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/signin");
-  return <WelcomeFlow name={user.name} />;
+  return <WelcomeFlow name={user.name} timezone={user.timezone} />;
 }

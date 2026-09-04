@@ -48,6 +48,13 @@ async function main() {
   const user = await db.user.findUnique({ where: { email } });
   check("Starts with 0 Stars", user?.starBalance === 0);
 
+  // 1b. Onboarding asks for a time zone and stores it on the account
+  const onboarding = await call("/api/onboarding", "POST", { headline: "Journey tester", timezone: "America/Chicago" });
+  const onboarded = await db.user.findUnique({ where: { email } });
+  check("Onboarding saves the time zone on the account", onboarding.status === 200 && onboarded?.timezone === "America/Chicago", onboarded?.timezone ?? "unset");
+  const badZone = await call("/api/profile", "PATCH", { timezone: "Mars/Olympus_Mons" });
+  check("Unknown time zone rejected (400)", badZone.status === 400);
+
   // 2. Backend enforces star gates via direct URL/API access
   const closingModule = await db.module.findFirst({ where: { title: "Closing" } });
   const closingLesson = await db.lesson.findFirst({ where: { moduleId: closingModule!.id } });
@@ -134,6 +141,40 @@ async function main() {
   check("Balance now 3 after manual award", boosted?.starBalance === 3);
   const manualTx = await db.starTransaction.findFirst({ where: { userId: user!.id, type: "MANUAL_AWARD" } });
   check("Manual award in ledger with actor + reason", manualTx !== null && manualTx.createdById !== null && manualTx.reason.includes("Roleplay"));
+
+  // 9b. Recurring live calls: one rule creates every occurrence; cancelling the series cancels the future ones
+  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+  const seriesStart = ymd(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const seriesEnd = ymd(new Date(Date.now() + 28 * 24 * 60 * 60 * 1000)); // 28 days → each weekday 4×
+  const seriesRes = await fetch(`${BASE}/api/admin/calls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    body: JSON.stringify({
+      title: "Journey weekly roleplay",
+      date: seriesStart,
+      time: "18:00",
+      timezone: "America/New_York",
+      durationMin: 45,
+      hostOnZoom: false,
+      repeat: { daysOfWeek: [1, 3], intervalWeeks: 1, endsOn: seriesEnd },
+    }),
+  });
+  const seriesData = (await seriesRes.json().catch(() => ({}))) as { series?: { id: string }; calls?: unknown[] };
+  check("Admin can schedule a repeating call", seriesRes.status === 200 && Boolean(seriesData.series?.id), JSON.stringify(seriesData).slice(0, 120));
+  const seriesCalls = seriesData.series ? await db.liveCall.findMany({ where: { seriesId: seriesData.series.id }, orderBy: { scheduledAt: "asc" } }) : [];
+  check("Series created 8 sessions (Mon + Wed × 4 weeks)", seriesCalls.length === 8, `${seriesCalls.length} sessions`);
+  const sixPmEastern = seriesCalls.every((c) => {
+    const h = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(c.scheduledAt));
+    return h === 18;
+  });
+  check("Every session is at 6 PM Eastern", sixPmEastern);
+  const seriesNotice = await db.notification.findFirst({ where: { userId: user!.id, type: "CALL_UPCOMING", title: { contains: "Journey weekly" } } });
+  check("Learner notified once about the series", seriesNotice !== null && Boolean(seriesNotice?.body?.includes("Every Monday and Wednesday")));
+  if (seriesData.series) {
+    const cancelSeries = await fetch(`${BASE}/api/admin/call-series/${seriesData.series.id}`, { method: "DELETE", headers: { Cookie: adminCookie } });
+    const cancelledCount = await db.liveCall.count({ where: { seriesId: seriesData.series.id, status: "CANCELLED" } });
+    check("Cancelling the series cancels all upcoming sessions", cancelSeries.status === 200 && cancelledCount === 8, `${cancelledCount} cancelled`);
+  }
 
   // 10. 1-on-1 bookings: host opens availability, learner books, double-booking blocked, cancel frees the slot
   const availabilityBody = {

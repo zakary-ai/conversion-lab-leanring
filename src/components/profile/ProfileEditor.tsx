@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { TimeZonePicker } from "@/components/time/TimeZonePicker";
+import { detectTimeZone } from "@/lib/timezone";
 
 type ProfileFields = {
   headline: string;
@@ -13,15 +15,22 @@ type ProfileFields = {
   linkedinUrl: string;
   videoIntroUrl: string;
   availability: string;
+  /** Account time zone (IANA). Empty when the person hasn't chosen one yet. */
+  timezone: string;
 };
 
-export function ProfileEditor({ initial }: { initial: ProfileFields }) {
+export function ProfileEditor({ initial, isStaff = false }: { initial: ProfileFields; isStaff?: boolean }) {
   const router = useRouter();
   const [fields, setFields] = useState(initial);
   const [skillsText, setSkillsText] = useState(initial.skills.join(", "));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // No zone on the account yet: suggest the device's so a plain "Save" fixes it.
+  useEffect(() => {
+    if (!initial.timezone) setFields((f) => (f.timezone ? f : { ...f, timezone: detectTimeZone() }));
+  }, [initial.timezone]);
 
   function set<K extends keyof ProfileFields>(key: K, value: ProfileFields[K]) {
     setFields((f) => ({ ...f, [key]: value }));
@@ -37,6 +46,7 @@ export function ProfileEditor({ initial }: { initial: ProfileFields }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...fields,
+          timezone: fields.timezone || undefined,
           skills: skillsText
             .split(",")
             .map((s) => s.trim())
@@ -67,6 +77,16 @@ export function ProfileEditor({ initial }: { initial: ProfileFields }) {
         <label className="label">Location</label>
         <input className="input" value={fields.location} placeholder="Austin, TX"
           onChange={(e) => set("location", e.target.value)} />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="label" htmlFor="profile-timezone">Time zone</label>
+        <TimeZonePicker id="profile-timezone" value={fields.timezone} onChange={(tz) => set("timezone", tz)} />
+        <p className="text-xs text-ink-dim mt-1">
+          {initial.timezone
+            ? "Live calls, 1-on-1 sessions and reminders use this everywhere in the academy."
+            : "Not set yet — we filled in your device's zone. Save to keep it."}
+          {isStaff && " Changing it also moves your 1-on-1 availability to the new zone."}
+        </p>
       </div>
       <div className="sm:col-span-2">
         <label className="label">Bio</label>

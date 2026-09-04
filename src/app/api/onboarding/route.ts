@@ -1,23 +1,33 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { withAuth, json } from "@/lib/api";
+import { isValidTimeZone } from "@/lib/timezone";
+import { timeZoneSyncWrites } from "@/lib/user-timezone";
 
 const schema = z.object({
   headline: z.string().trim().max(120).optional(),
   location: z.string().trim().max(120).optional(),
   bio: z.string().trim().max(1000).optional(),
+  timezone: z.string().trim().refine(isValidTimeZone, "Unknown time zone").optional(),
 });
 
 export async function POST(req: Request) {
   return withAuth(async (user) => {
-    const body = schema.parse(await req.json().catch(() => ({})));
+    const { timezone, ...profile } = schema.parse(await req.json().catch(() => ({})));
     await db.$transaction([
       db.profile.upsert({
         where: { userId: user.id },
-        create: { userId: user.id, ...body },
-        update: body,
+        create: { userId: user.id, ...profile },
+        update: profile,
       }),
-      db.user.update({ where: { id: user.id }, data: { onboardedAt: new Date() } }),
+      // The zone is an account setting rather than a profile field: it decides
+      // how every time in the app is shown and is mirrored onto the person's
+      // booking availability and upcoming sessions.
+      db.user.update({
+        where: { id: user.id },
+        data: { onboardedAt: new Date(), ...(timezone ? { timezone } : {}) },
+      }),
+      ...(timezone ? timeZoneSyncWrites(user.id, timezone) : []),
     ]);
 
     // Find the learner's first lesson so onboarding can land directly in training

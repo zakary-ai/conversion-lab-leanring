@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatTime, timeAgo } from "@/lib/format";
+import { useTimeZone } from "@/components/time/TimeZoneContext";
 
 type DmMessage = {
   id: string;
@@ -23,6 +24,7 @@ export function DmChat({
   meId: string;
   other: { id: string; name: string; lastActiveAt: string | null } | null;
 }) {
+  const tz = useTimeZone();
   const [messages, setMessages] = useState<DmMessage[] | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -115,7 +117,7 @@ export function DmChat({
                 {online
                   ? "Active now"
                   : other.lastActiveAt
-                    ? `Active ${timeAgo(other.lastActiveAt)}`
+                    ? `Active ${timeAgo(other.lastActiveAt, tz)}`
                     : "Offline"}
               </p>
             </div>
@@ -151,7 +153,7 @@ export function DmChat({
               <div key={m.id}>
                 {gap && (
                   <p className="text-center text-[10px] text-ink-dim my-3">
-                    {timeAgo(m.createdAt)} · {formatTime(m.createdAt)}
+                    {timeAgo(m.createdAt, tz)} · {formatTime(m.createdAt, tz)}
                   </p>
                 )}
                 <div className={`flex ${own ? "justify-end" : "justify-start"}`}>

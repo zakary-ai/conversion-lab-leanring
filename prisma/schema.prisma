@@ -37,6 +37,10 @@ model User {
   status       UserStatus @default(ACTIVE)
   // Cached star balance — the StarTransaction ledger is the source of truth.
   starBalance  Int        @default(0)
+  // IANA zone chosen during onboarding (or on the profile). Null = not set yet;
+  // the UI then falls back to the browser zone. Source of truth for
+  // HostAvailability.timezone and Booking.learnerTz — see lib/user-timezone.ts.
+  timezone     String?
   onboardedAt  DateTime?
   lastActiveAt DateTime?
   createdAt    DateTime   @default(now())
@@ -57,6 +61,7 @@ model User {
   dmMessages          DmMessage[]
   callAttendees       CallAttendee[]
   hostedCalls         LiveCall[]            @relation("CallHost")
+  hostedSeries        CallSeries[]          @relation("CallSeriesHost")
   hostAvailability    HostAvailability?
   hostedBookings      Booking[]             @relation("BookingHost")
   bookings            Booking[]             @relation("BookingLearner")
@@ -479,12 +484,66 @@ model LiveCall {
   relatedModuleId String?
   status        CallStatus @default(SCHEDULED)
   // Provider abstraction: room reference from the configured RTC provider
+  // (embedded Daily.co rooms). Unused when the call is hosted on Zoom.
   providerRoomId String?
+  // Occurrence of a recurring series (null for one-off calls). The original
+  // slot from the rule is kept in seriesSlot even if this occurrence is moved.
+  seriesId      String?
+  series        CallSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  seriesSlot    DateTime?
+  // Meeting provider (Zoom built in). One-off calls own a meeting; series
+  // occurrences share the series meeting and carry their Zoom occurrence id.
+  // Null when the call runs in an embedded room or no provider is configured.
+  meetingProvider     String?
+  meetingId           String?
+  meetingOccurrenceId String?
+  joinUrl             String?
+  startUrl            String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
   attendees  CallAttendee[]
   recordings CallRecording[]
+
+  @@index([seriesId, scheduledAt])
+}
+
+enum CallSeriesStatus {
+  ACTIVE
+  CANCELLED
+}
+
+// A repeating live call. The rule is weekly: on `daysOfWeek` (0 = Sunday),
+// every `intervalWeeks`, at `startMinute` past midnight in `timezone`, from
+// `startsOn` through `endsOn` (calendar dates in that zone, "YYYY-MM-DD").
+// Every occurrence is created up front as a LiveCall (see lib/call-series.ts),
+// so RSVPs, star gates, recordings and notifications need no special cases.
+// When Zoom is configured the series is one Zoom recurring meeting.
+model CallSeries {
+  id               String           @id @default(cuid())
+  title            String
+  description      String?
+  hostId           String?
+  host             User?            @relation("CallSeriesHost", fields: [hostId], references: [id], onDelete: SetNull)
+  timezone         String
+  daysOfWeek       Int[]
+  intervalWeeks    Int              @default(1)
+  startMinute      Int
+  startsOn         String
+  endsOn           String
+  durationMin      Int              @default(60)
+  minStars         Int              @default(0)
+  maxAttendees     Int?
+  recordingEnabled Boolean          @default(false)
+  status           CallSeriesStatus @default(ACTIVE)
+  meetingProvider  String?
+  meetingId        String?
+  joinUrl          String?
+  startUrl         String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  calls LiveCall[]
 }
 
 model CallAttendee {

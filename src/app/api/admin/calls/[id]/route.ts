@@ -2,6 +2,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { withRole, json, apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { notifyMany } from "@/lib/notifications";
+import { CallRuleError, cancelCall, deleteCall, syncCallMeeting } from "@/lib/call-service";
 
 const schema = z.object({
   title: z.string().trim().min(1).max(160).optional(),
@@ -27,21 +29,42 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   return withRole("ADMIN", async (user) => {
     const { id } = await ctx.params;
     const body = schema.parse(await req.json());
-    const { recording, scheduledAt, ...rest } = body;
+    const { recording, scheduledAt, status, ...rest } = body;
+    const existing = await db.liveCall.findUnique({ where: { id } });
+    if (!existing) return apiError(404, "Call not found");
+
+    try {
+      // Cancelling also removes the Zoom meeting (or this occurrence of a series).
+      if (status === "CANCELLED") await cancelCall(id, user.id);
+    } catch (err) {
+      if (err instanceof CallRuleError) return apiError(err.status, err.message);
+      throw err;
+    }
 
     const call = await db.liveCall.update({
       where: { id },
-      data: { ...rest, ...(scheduledAt ? { scheduledAt: new Date(scheduledAt) } : {}) },
+      data: {
+        ...rest,
+        ...(scheduledAt ? { scheduledAt: new Date(scheduledAt) } : {}),
+        ...(status && status !== "CANCELLED" ? { status } : {}),
+      },
     });
 
-    if (body.status === "LIVE") {
+    // Keep Zoom in step when what/when/how long changed.
+    const meetingFieldsChanged =
+      rest.title !== undefined || rest.description !== undefined || rest.durationMin !== undefined || scheduledAt !== undefined;
+    if (existing.meetingId && meetingFieldsChanged && call.status !== "CANCELLED") {
+      await syncCallMeeting(call);
+    }
+
+    if (status === "LIVE") {
       const attendees = await db.callAttendee.findMany({ where: { callId: id }, select: { userId: true } });
-      const { notifyMany } = await import("@/lib/notifications");
       await notifyMany(
         attendees.map((a) => a.userId),
         {
           type: "CALL_STARTING",
           title: `${call.title} is starting now`,
+          body: call.joinUrl ? "Join on Zoom from the call page." : undefined,
           linkUrl: `/calls/${id}`,
         }
       );
@@ -66,10 +89,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return withRole("ADMIN", async (user) => {
     const { id } = await ctx.params;
-    const call = await db.liveCall.findUnique({ where: { id } });
-    if (!call) return apiError(404, "Call not found");
-    await db.liveCall.delete({ where: { id } });
-    await audit({ actorId: user.id, action: "call.delete", entityType: "call", entityId: id, details: { title: call.title } });
+    try {
+      await deleteCall(id, user.id);
+    } catch (err) {
+      if (err instanceof CallRuleError) return apiError(err.status, err.message);
+      throw err;
+    }
     return json({ ok: true });
   });
 }
