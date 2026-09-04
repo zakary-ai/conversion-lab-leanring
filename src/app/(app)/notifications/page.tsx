@@ -18,9 +18,8 @@ const TYPE_ICONS: Record<string, string> = {
   NEW_DM: "💬",
   MENTION: "@",
   REPLY: "↩",
-  JOB_UNLOCKED: "💼",
-  NEW_JOB: "💼",
-  APPLICATION_UPDATE: "📋",
+  BOOKING_CONFIRMED: "📆",
+  BOOKING_CANCELLED: "🚫",
   SYSTEM: "ℹ️",
 };
 

@@ -1,5 +1,4 @@
 import { db } from "./db";
-import { getSetting } from "./settings";
 import type { User } from "@prisma/client";
 
 /** The single nearest locked thing the learner is working toward. */
@@ -7,7 +6,7 @@ export async function getNextUnlock(user: User) {
   const balance = user.starBalance;
   const gate = { gt: balance };
 
-  const [course, moduleRow, resource, channel, jobBoardMin] = await Promise.all([
+  const [course, moduleRow, channel] = await Promise.all([
     db.course.findFirst({
       where: { status: "PUBLISHED", minStars: gate },
       orderBy: { minStars: "asc" },
@@ -18,26 +17,17 @@ export async function getNextUnlock(user: User) {
       orderBy: { minStars: "asc" },
       select: { title: true, minStars: true },
     }),
-    db.resource.findFirst({
-      where: { status: "PUBLISHED", minStars: gate },
-      orderBy: { minStars: "asc" },
-      select: { title: true, minStars: true },
-    }),
     db.channel.findFirst({
       where: { minStars: gate, minRole: null, hidden: false },
       orderBy: { minStars: "asc" },
       select: { name: true, minStars: true },
     }),
-    getSetting("progression.jobBoardMinStars"),
   ]);
 
   const candidates: { title: string; minStars: number; kind: string }[] = [];
   if (course) candidates.push({ title: course.title, minStars: course.minStars, kind: "Course" });
   if (moduleRow) candidates.push({ title: moduleRow.title, minStars: moduleRow.minStars, kind: "Module" });
-  if (resource) candidates.push({ title: resource.title, minStars: resource.minStars, kind: "Resource" });
   if (channel) candidates.push({ title: `#${channel.name}`, minStars: channel.minStars, kind: "Channel" });
-  const jbMin = Number(jobBoardMin);
-  if (jbMin > balance) candidates.push({ title: "Job Board", minStars: jbMin, kind: "Jobs" });
 
   candidates.sort((a, b) => a.minStars - b.minStars);
   return candidates[0] ?? null;

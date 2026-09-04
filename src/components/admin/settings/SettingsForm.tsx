@@ -14,11 +14,17 @@ const SECTIONS: {
     title: "Progression",
     description: "Business rules for stars and unlocking.",
     fields: [
-      { key: "progression.jobBoardMinStars", label: "Job Board star requirement", type: "number", hint: "Stars needed to unlock the Job Board" },
       { key: "progression.defaultQuizPassingScore", label: "Default quiz passing score (%)", type: "number" },
       { key: "progression.allowStarDeduction", label: "Allow admins to deduct stars", type: "boolean" },
       { key: "progression.starLabel", label: "Star terminology (singular)", type: "text" },
       { key: "progression.starLabelPlural", label: "Star terminology (plural)", type: "text" },
+    ],
+  },
+  {
+    title: "1-on-1s",
+    description: "Who can book time with staff.",
+    fields: [
+      { key: "booking.minStars", label: "1-on-1 booking star requirement", type: "number", hint: "Stars needed before a learner can book a 1-on-1 (0 = everyone)" },
     ],
   },
   {

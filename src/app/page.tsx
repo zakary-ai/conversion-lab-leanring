@@ -4,11 +4,11 @@ import { getCurrentUser } from "@/lib/auth";
 import { StarIcon, StarRow } from "@/components/ui/Star";
 
 const UNLOCKS = [
-  { stars: 1, label: "Sales Script Vault & premium resources" },
-  { stars: 2, label: "Advanced training modules" },
-  { stars: 3, label: "Job Board with vetted sales opportunities" },
+  { stars: 1, label: "Advanced training modules" },
+  { stars: 2, label: "Live call recordings" },
+  { stars: 3, label: "Advanced sales channels" },
   { stars: 4, label: "Private elite community" },
-  { stars: 5, label: "High-level closing roles" },
+  { stars: 5, label: "Roleplay certification" },
 ];
 
 export default async function LandingPage() {
@@ -52,7 +52,7 @@ export default async function LandingPage() {
           style={{ animationDelay: "120ms" }}
         >
           A gamified sales academy where progress is proof. Complete training, pass assessments,
-          and unlock advanced coaching, private communities, and real sales opportunities.
+          and unlock advanced coaching, private communities, and 1-on-1 time with staff.
         </p>
         <div className="flex items-center gap-4 mt-10 animate-rise" style={{ animationDelay: "180ms" }}>
           <Link href="/signup" className="btn btn-primary text-base px-8 py-3">

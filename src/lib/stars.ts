@@ -1,7 +1,6 @@
 import { db } from "./db";
 import { notify } from "./notifications";
 import { audit } from "./audit";
-import { getSetting } from "./settings";
 import type { StarTxType } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 
@@ -138,34 +137,19 @@ async function afterBalanceChange(
 async function recordUnlocks(userId: string, previous: number, current: number) {
   const starRange = { gt: previous, lte: current };
 
-  const [courses, modules, resources, channels, recordings, jobBoardMin] = await Promise.all([
+  const [courses, modules, channels, recordings] = await Promise.all([
     db.course.findMany({ where: { status: "PUBLISHED", minStars: starRange }, select: { id: true, title: true, minStars: true } }),
     db.module.findMany({ where: { status: "PUBLISHED", minStars: starRange }, select: { id: true, title: true, minStars: true } }),
-    db.resource.findMany({ where: { status: "PUBLISHED", minStars: starRange }, select: { id: true, title: true, minStars: true } }),
     db.channel.findMany({ where: { minStars: starRange, minRole: null }, select: { id: true, name: true, minStars: true } }),
     db.callRecording.findMany({ where: { status: "PUBLISHED", minStars: starRange }, select: { id: true, title: true, minStars: true } }),
-    getSetting("progression.jobBoardMinStars"),
   ]);
 
   const events: { entityType: string; entityId: string | null; title: string; atStars: number }[] = [
     ...courses.map((c) => ({ entityType: "course", entityId: c.id, title: c.title, atStars: c.minStars })),
     ...modules.map((m) => ({ entityType: "module", entityId: m.id, title: m.title, atStars: m.minStars })),
-    ...resources.map((r) => ({ entityType: "resource", entityId: r.id, title: r.title, atStars: r.minStars })),
     ...channels.map((ch) => ({ entityType: "channel", entityId: ch.id, title: `#${ch.name}`, atStars: ch.minStars })),
     ...recordings.map((r) => ({ entityType: "recording", entityId: r.id, title: r.title, atStars: r.minStars })),
   ];
-
-  const jobBoardThreshold = Number(jobBoardMin);
-  if (jobBoardThreshold > previous && jobBoardThreshold <= current) {
-    events.push({ entityType: "job_board", entityId: null, title: "Job Board", atStars: jobBoardThreshold });
-    await notify({
-      userId,
-      type: "JOB_UNLOCKED",
-      title: "Job Board unlocked",
-      body: "You can now browse and apply to sales opportunities.",
-      linkUrl: "/jobs",
-    });
-  }
 
   if (events.length > 0) {
     await db.unlockEvent.createMany({

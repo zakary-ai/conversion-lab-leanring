@@ -1,9 +1,10 @@
-import { requireUser } from "@/lib/auth";
+import { requireUser, isStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getCourseProgress } from "@/lib/progress";
-import { isModuleCompleted, canAccessJobBoard } from "@/lib/access";
-import { getSetting } from "@/lib/settings";
+import { isModuleCompleted } from "@/lib/access";
 import { getUpcomingCalls } from "@/lib/dashboard";
+import { getNextBookingFor } from "@/lib/booking-service";
+import { LocalTime } from "@/components/one-on-ones/LocalTime";
 import { StarRow } from "@/components/ui/Star";
 import { ProgressBar } from "@/components/ui/Progress";
 import { Avatar } from "@/components/ui/Avatar";
@@ -16,7 +17,7 @@ export const metadata = { title: "Profile" };
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  const [profile, courses, jobAccess, jobBoardMin, upcomingCalls] = await Promise.all([
+  const [profile, courses, upcomingCalls, nextBooking, availability] = await Promise.all([
     db.profile.findUnique({ where: { userId: user.id } }),
     db.course.findMany({
       where: { status: "PUBLISHED" },
@@ -25,9 +26,9 @@ export default async function ProfilePage() {
         modules: { where: { status: "PUBLISHED" }, orderBy: { sortOrder: "asc" } },
       },
     }),
-    canAccessJobBoard(user),
-    getSetting("progression.jobBoardMinStars"),
     getUpcomingCalls(1),
+    getNextBookingFor(user.id),
+    isStaff(user.role) ? db.hostAvailability.findUnique({ where: { hostId: user.id } }) : null,
   ]);
 
   const courseProgress = await Promise.all(
@@ -49,7 +50,7 @@ export default async function ProfilePage() {
           courseProgress.reduce((sum, c) => sum + c.progress.percent, 0) / courseProgress.length
         );
 
-  // Profile strength: simple, honest scoring of application readiness
+  // Profile strength: simple, honest scoring of how complete the profile is
   const strengthChecks: { label: string; done: boolean }[] = [
     { label: "Headline", done: Boolean(profile?.headline) },
     { label: "Bio", done: Boolean(profile?.bio) },
@@ -124,29 +125,42 @@ export default async function ProfilePage() {
 
         <div className="space-y-6">
           <section className="card p-6">
-            <p className="section-title mb-4">Job eligibility</p>
-            {jobAccess.allowed ? (
+            <p className="section-title mb-4">1-on-1 coaching</p>
+            {isStaff(user.role) ? (
               <div>
-                <p className="chip chip-good mb-2">
-                  <Icons.check className="h-3 w-3" />
-                  Job Board unlocked
-                </p>
+                {availability?.acceptingBookings ? (
+                  <p className="chip chip-good mb-2">
+                    <Icons.check className="h-3 w-3" />
+                    Accepting bookings
+                  </p>
+                ) : (
+                  <p className="chip mb-2">Not accepting bookings</p>
+                )}
                 <p className="text-sm text-ink-mid">
-                  You can apply to positions matching your star level.
+                  {availability
+                    ? `${availability.slotMinutes}-minute sessions · ${availability.timezone}`
+                    : "Set your weekly hours so learners can book time with you."}
                 </p>
-                <Link href="/jobs" className="btn btn-secondary btn-sm mt-3">
-                  Browse jobs
+                <Link href="/one-on-ones/availability" className="btn btn-secondary btn-sm mt-3">
+                  Manage availability
+                </Link>
+              </div>
+            ) : nextBooking ? (
+              <div>
+                <p className="text-sm font-semibold">Next session with {nextBooking.host.name}</p>
+                <p className="text-xs text-ink-dim mt-1">
+                  <LocalTime iso={nextBooking.startsAt.toISOString()} /> · {nextBooking.durationMin} min
+                </p>
+                <Link href="/one-on-ones" className="btn btn-secondary btn-sm mt-3">
+                  View 1-on-1s
                 </Link>
               </div>
             ) : (
               <div>
-                <p className="text-sm text-ink-mid">
-                  Reach {String(jobBoardMin)} Stars to unlock the Job Board. You have{" "}
-                  {user.starBalance}.
-                </p>
-                <div className="mt-2">
-                  <ProgressBar percent={(user.starBalance / Number(jobBoardMin)) * 100} />
-                </div>
+                <p className="text-sm text-ink-mid">Book private time with a coach to work on your pitch.</p>
+                <Link href="/one-on-ones" className="btn btn-secondary btn-sm mt-3">
+                  Book a 1-on-1
+                </Link>
               </div>
             )}
           </section>

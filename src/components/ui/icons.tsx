@@ -14,12 +14,6 @@ export const Icons = {
       <path d="M6 10.8v5c0 1.2 2.7 2.7 6 2.7s6-1.5 6-2.7v-5" />
     </svg>
   ),
-  resources: ({ className = "h-5 w-5" }: IconProps) => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
-      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-13z" strokeLinejoin="round" />
-      <path d="M4 17.5A2.5 2.5 0 0 1 6.5 15H20" />
-    </svg>
-  ),
   community: ({ className = "h-5 w-5" }: IconProps) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
       <path d="M8 10h8M8 14h5" strokeLinecap="round" />
@@ -35,12 +29,6 @@ export const Icons = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
       <rect x="3" y="6" width="13" height="12" rx="2.5" />
       <path d="M16 10.5l5-3v9l-5-3" strokeLinejoin="round" />
-    </svg>
-  ),
-  jobs: ({ className = "h-5 w-5" }: IconProps) => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
-      <rect x="3" y="7" width="18" height="13" rx="2.5" />
-      <path d="M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7M3 12h18" />
     </svg>
   ),
   bell: ({ className = "h-5 w-5" }: IconProps) => (

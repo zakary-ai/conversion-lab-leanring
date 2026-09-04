@@ -54,10 +54,6 @@ async function main() {
   const blocked = await call(`/api/lessons/${closingLesson!.id}/complete`, "POST");
   check("Locked module lesson completion blocked (403)", blocked.status === 403);
 
-  const jobs = await db.job.findMany({ where: { status: "PUBLISHED" }, orderBy: { minStars: "asc" } });
-  const applyBlocked = await call(`/api/jobs/${jobs[0].id}/apply`, "POST", { message: "hi" });
-  check("Job application blocked before Job Board unlock (403)", applyBlocked.status === 403);
-
   // 3. Complete Module 1 (Sales Foundations) lessons
   const foundations = await db.module.findFirst({
     where: { title: "Sales Foundations" },
@@ -124,7 +120,7 @@ async function main() {
     notifications.some((n) => n.type === "STAR_EARNED") && notifications.some((n) => n.type === "QUIZ_RESULT")
   );
 
-  // 9. Reach Job Board threshold via admin manual stars (tests admin flow + ledger)
+  // 9. Admin manual stars (tests admin flow + ledger)
   const adminLogin = await call("/api/auth/demo", "POST", { email: "admin@demo.conversionlab.io" }, "");
   const adminCookie = cookie;
   check("Admin demo login works", adminLogin.status === 200);
@@ -135,48 +131,66 @@ async function main() {
   });
   check("Admin manual star award works", adjust.status === 200);
   const boosted = await db.user.findUnique({ where: { email } });
-  check("Balance now 3 (Job Board threshold)", boosted?.starBalance === 3);
+  check("Balance now 3 after manual award", boosted?.starBalance === 3);
   const manualTx = await db.starTransaction.findFirst({ where: { userId: user!.id, type: "MANUAL_AWARD" } });
   check("Manual award in ledger with actor + reason", manualTx !== null && manualTx.createdById !== null && manualTx.reason.includes("Roleplay"));
-  const jobUnlockNotice = await db.notification.findFirst({ where: { userId: user!.id, type: "JOB_UNLOCKED" } });
-  check("Job Board unlock notification sent", jobUnlockNotice !== null);
 
-  // 10. User opens a job and applies (as the learner again)
+  // 10. 1-on-1 bookings: host opens availability, learner books, double-booking blocked, cancel frees the slot
+  const availabilityBody = {
+    timezone: "UTC",
+    slotMinutes: 30,
+    minNoticeMinutes: 0,
+    acceptingBookings: true,
+    zoomUserId: "",
+    windows: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({ dayOfWeek, startMinute: 0, endMinute: 1440 })),
+  };
+  const setAvailability = await fetch(`${BASE}/api/one-on-ones/availability`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    body: JSON.stringify(availabilityBody),
+  });
+  check("Admin can set 1-on-1 availability", setAvailability.status === 200);
+
   cookie = "";
   await call("/api/auth/signin", "POST", { email, password: "password123" });
-  const eligibleJob = jobs.find((j) => j.minStars <= 3)!;
-  const apply = await call(`/api/jobs/${eligibleJob.id}/apply`, "POST", {
-    message: "I just completed Foundations and earned my roleplay certification. Ready to work.",
-  });
-  check("Job application submitted", apply.status === 200);
-  const application = await db.jobApplication.findFirst({
-    where: { userId: user!.id },
-    include: { job: true },
-  });
-  check("Application persisted in My Applications", application !== null && application.status === "APPLIED");
+  const learnerAvailability = await call("/api/one-on-ones/availability", "PUT", availabilityBody);
+  check("Learner cannot set availability (403)", learnerAvailability.status === 403);
 
-  // 5-star job should still be blocked
-  const eliteJob = jobs.find((j) => j.minStars === 5);
-  if (eliteJob) {
-    const eliteBlocked = await call(`/api/jobs/${eliteJob.id}/apply`, "POST", { message: "hi" });
-    check("5-star job still blocked at 3 stars (403)", eliteBlocked.status === 403);
-  }
+  const adminUser = await db.user.findUnique({ where: { email: "admin@demo.conversionlab.io" } });
+  const slotFrom = new Date();
+  const slotTo = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+  const slotsRes = await call(
+    `/api/one-on-ones/hosts/${adminUser!.id}/slots?from=${slotFrom.toISOString()}&to=${slotTo.toISOString()}`
+  );
+  const slots = ((slotsRes.data as unknown as { slots?: { startsAt: string }[] }).slots ?? []);
+  check("Learner sees open slots", slotsRes.status === 200 && slots.length > 0, `${slots.length} slots`);
+  const chosen = slots[0]?.startsAt;
 
-  // 11. Admin sees and updates the application → applicant notified
-  const updateApp = await fetch(`${BASE}/api/admin/applications/${application!.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", Cookie: adminCookie },
-    body: JSON.stringify({ status: "UNDER_REVIEW" }),
+  const bookingBody = { hostId: adminUser!.id, startsAt: chosen, learnerTz: "UTC", note: "Journey test session" };
+  const booked = await call("/api/one-on-ones/bookings", "POST", bookingBody);
+  check("Booking succeeds", booked.status === 200, JSON.stringify(booked.data).slice(0, 120));
+  const booking = await db.booking.findFirst({ where: { learnerId: user!.id, status: "CONFIRMED" } });
+  check("Booking persisted as CONFIRMED with slotKey", booking !== null && booking.slotKey !== null);
+  const duplicate = await call("/api/one-on-ones/bookings", "POST", bookingBody);
+  check("Same slot cannot be booked twice (409)", duplicate.status === 409);
+  const learnerNotice = await db.notification.findFirst({ where: { userId: user!.id, type: "BOOKING_CONFIRMED" } });
+  const hostNotice = await db.notification.findFirst({
+    where: { userId: adminUser!.id, type: "BOOKING_CONFIRMED", createdAt: { gte: slotFrom } },
   });
-  check("Admin can update application status", updateApp.status === 200);
-  const updated = await db.jobApplication.findUnique({ where: { id: application!.id } });
-  check("Status persisted as Under Review", updated?.status === "UNDER_REVIEW");
-  const appNotice = await db.notification.findFirst({
-    where: { userId: user!.id, type: "APPLICATION_UPDATE" },
-  });
-  check("Applicant notified of status change", appNotice !== null);
+  check("Both people notified of the booking", learnerNotice !== null && hostNotice !== null);
 
-  // 12. Community + DM security spot checks
+  const cancelled = await call(`/api/one-on-ones/bookings/${booking!.id}/cancel`, "POST", { reason: "Journey test cancel" });
+  check("Learner can cancel", cancelled.status === 200);
+  const afterCancel = await db.booking.findUnique({ where: { id: booking!.id } });
+  check("Cancelled booking frees its slot", afterCancel?.status === "CANCELLED" && afterCancel.slotKey === null);
+  const cancelNotice = await db.notification.findFirst({
+    where: { userId: adminUser!.id, type: "BOOKING_CANCELLED", createdAt: { gte: slotFrom } },
+  });
+  check("Host notified of cancellation", cancelNotice !== null);
+  const rebooked = await call("/api/one-on-ones/bookings", "POST", bookingBody);
+  check("Freed slot can be booked again", rebooked.status === 200);
+
+  // 11. Community + DM security spot checks
   const staffChannel = await db.channel.findFirst({ where: { slug: "moderators" } });
   const staffBlocked = await call(`/api/channels/${staffChannel!.id}/messages`);
   check("Learner blocked from staff channel (403)", staffBlocked.status === 403);
@@ -190,14 +204,6 @@ async function main() {
     content: "Just passed the Foundations assessment — Star #1 earned! 🎉",
   });
   check("Community message persists", post.status === 200);
-
-  // Search doesn't leak restricted jobs (5-star job at 3 stars)
-  const search = await call(`/api/search?q=Closer`);
-  const searchResults = (search.data.results ?? []) as { title: string; type: string }[];
-  check(
-    "Search hides jobs above star level",
-    !searchResults.some((r) => r.type === "Jobs" && r.title.includes("High-Ticket"))
-  );
 
   console.log(failures === 0 ? "\n🎉 CORE JOURNEY: ALL CHECKS PASSED" : `\n💥 ${failures} CHECKS FAILED`);
   process.exit(failures === 0 ? 0 : 1);
