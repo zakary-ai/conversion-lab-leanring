@@ -79,7 +79,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search training, resources, community, people, jobs…"
+            placeholder="Search training, community, people…"
             className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-ink-dim"
           />
           <kbd className="text-[10px] text-ink-dim border border-edge rounded px-1.5 py-0.5">ESC</kbd>

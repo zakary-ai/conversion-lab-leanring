@@ -17,10 +17,10 @@ export default async function AdminOverviewPage() {
     quizPasses,
     starsAwarded,
     callAttendance,
-    jobApplications,
+    upcomingBookings,
     messagesThisWeek,
     recentAudit,
-    pendingApplications,
+    bookingsThisWeek,
   ] = await Promise.all([
     db.user.count({ where: { role: "LEARNER" } }),
     db.user.count({ where: { role: "LEARNER", lastActiveAt: { gte: weekAgo } } }),
@@ -33,14 +33,16 @@ export default async function AdminOverviewPage() {
     db.quizAttempt.count({ where: { passed: true } }),
     db.starTransaction.aggregate({ _sum: { amount: true }, where: { amount: { gt: 0 } } }),
     db.callAttendee.count({ where: { joinedAt: { not: null } } }),
-    db.jobApplication.count(),
+    db.booking.count({ where: { status: "CONFIRMED", startsAt: { gte: new Date() } } }),
     db.message.count({ where: { createdAt: { gte: weekAgo }, deletedAt: null } }),
     db.auditLog.findMany({
       orderBy: { createdAt: "desc" },
       take: 8,
       include: { actor: { select: { name: true } } },
     }),
-    db.jobApplication.count({ where: { status: "APPLIED" } }),
+    db.booking.count({
+      where: { status: "CONFIRMED", startsAt: { gte: new Date(), lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } },
+    }),
   ]);
 
   const [completedLessons, publishedLessons, learnerCount] = lessonTotals;
@@ -70,7 +72,7 @@ export default async function AdminOverviewPage() {
     { label: "Quiz pass rate", value: `${passRate}%`, href: "/admin/training" },
     { label: "Stars awarded", value: starsAwarded._sum.amount ?? 0, href: "/admin/stars" },
     { label: "Call attendance", value: callAttendance, href: "/admin/calls" },
-    { label: "Job applications", value: jobApplications, href: "/admin/jobs" },
+    { label: "1-on-1s booked", value: upcomingBookings, href: "/admin/one-on-ones" },
     { label: "Messages this week", value: messagesThisWeek, href: "/community" },
   ];
 
@@ -81,9 +83,9 @@ export default async function AdminOverviewPage() {
           <h1 className="text-2xl font-bold tracking-tight">Command Center</h1>
           <p className="text-ink-mid text-sm mt-1">Everything happening across the academy.</p>
         </div>
-        {pendingApplications > 0 && (
-          <Link href="/admin/jobs" className="chip chip-accent">
-            {pendingApplications} application{pendingApplications === 1 ? "" : "s"} awaiting review
+        {bookingsThisWeek > 0 && (
+          <Link href="/admin/one-on-ones" className="chip chip-accent">
+            {bookingsThisWeek} 1-on-1{bookingsThisWeek === 1 ? "" : "s"} in the next 7 days
           </Link>
         )}
       </header>

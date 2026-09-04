@@ -6,10 +6,10 @@ import { StarIcon, StarRow } from "@/components/ui/Star";
 
 const UNLOCKS = [
   "Advanced Training",
-  "Premium Resources",
   "Private Communities",
   "Live Coaching",
-  "Sales Opportunities",
+  "1-on-1 Coaching",
+  "Call Recordings",
 ];
 
 export function WelcomeFlow({ name }: { name: string }) {
@@ -83,7 +83,7 @@ export function WelcomeFlow({ name }: { name: string }) {
           <div className="card p-10 animate-pop" key="s1">
             <h2 className="text-2xl font-bold tracking-tight">Set up your profile</h2>
             <p className="text-sm text-ink-mid mt-1 mb-6">
-              Your profile powers your job applications later. You can finish it any time.
+              Your profile helps coaches and the community get to know you. You can finish it any time.
             </p>
             <div className="space-y-4">
               <div>

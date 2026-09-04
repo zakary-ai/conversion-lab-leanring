@@ -7,7 +7,6 @@ import { db } from "./db";
  */
 export const SETTING_DEFAULTS = {
   // Progression
-  "progression.jobBoardMinStars": 3,
   "progression.defaultQuizPassingScore": 80,
   "progression.allowStarDeduction": true,
   "progression.starLabel": "Star",
@@ -18,6 +17,8 @@ export const SETTING_DEFAULTS = {
   // Training
   "training.completionRule": "manual", // manual = learner clicks Complete; future: watch-percentage
   "training.defaultAllowQuizRetry": true,
+  // 1-on-1 bookings
+  "booking.minStars": 0,
   // Platform
   "platform.name": "Conversion Lab",
   "platform.logoUrl": "",

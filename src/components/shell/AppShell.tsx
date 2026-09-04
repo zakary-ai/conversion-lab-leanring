@@ -21,21 +21,19 @@ export type ShellUser = {
 const LEARNER_NAV = [
   { href: "/dashboard", label: "Home", icon: Icons.home },
   { href: "/training", label: "Training", icon: Icons.training },
-  { href: "/resources", label: "Resources", icon: Icons.resources },
   { href: "/community", label: "Community", icon: Icons.community },
   { href: "/messages", label: "Messages", icon: Icons.messages, badge: "dm" as const },
   { href: "/calls", label: "Live Calls", icon: Icons.calls },
-  { href: "/jobs", label: "Jobs", icon: Icons.jobs },
+  { href: "/one-on-ones", label: "1-on-1s", icon: Icons.calendar },
 ];
 
 const ADMIN_NAV = [
   { href: "/admin", label: "Overview", icon: Icons.chart },
   { href: "/admin/training", label: "Training", icon: Icons.training },
-  { href: "/admin/resources", label: "Resources", icon: Icons.resources },
   { href: "/admin/learners", label: "Learners", icon: Icons.users },
   { href: "/admin/stars", label: "Stars", icon: Icons.star },
   { href: "/admin/calls", label: "Live Calls", icon: Icons.calls },
-  { href: "/admin/jobs", label: "Jobs", icon: Icons.jobs },
+  { href: "/admin/one-on-ones", label: "1-on-1s", icon: Icons.calendar },
   { href: "/admin/settings", label: "Settings", icon: Icons.settings },
   { href: "/admin/audit", label: "Audit Log", icon: Icons.audit },
 ];

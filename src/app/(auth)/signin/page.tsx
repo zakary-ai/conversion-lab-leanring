@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { FormError, useAuthSubmit } from "@/components/auth/AuthForm";
-import { DemoSwitcher } from "@/components/auth/DemoSwitcher";
 
 export default function SignInPage() {
   const [mode, setMode] = useState<"email" | "code">("email");
@@ -25,7 +24,6 @@ export default function SignInPage() {
           Create an account
         </Link>
       </p>
-      <DemoSwitcher />
     </div>
   );
 }

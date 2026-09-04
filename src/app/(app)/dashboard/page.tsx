@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { getContinueTarget, getNextStarTarget } from "@/lib/progress";
 import {
   getCommunityActivity,
@@ -8,14 +7,14 @@ import {
   getRecentUnlocks,
   getUpcomingCalls,
 } from "@/lib/dashboard";
-import { canAccessJobBoard } from "@/lib/access";
+import { getNextBookingFor } from "@/lib/booking-service";
+import { LocalTime } from "@/components/one-on-ones/LocalTime";
 import { StarIcon, StarRow } from "@/components/ui/Star";
 import { ProgressBar } from "@/components/ui/Progress";
 import { LockIcon } from "@/components/ui/Locked";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icons } from "@/components/ui/icons";
-import { formatDate, formatTime, timeAgo, enumLabel } from "@/lib/format";
-import { getSetting } from "@/lib/settings";
+import { formatDate, formatTime, timeAgo } from "@/lib/format";
 
 export const metadata = { title: "Home" };
 
@@ -28,8 +27,7 @@ export default async function DashboardPage() {
     recentUnlocks,
     upcomingCalls,
     activity,
-    jobBoardAccess,
-    jobBoardMin,
+    nextBooking,
   ] = await Promise.all([
     getContinueTarget(user.id),
     getNextStarTarget(user.id),
@@ -37,17 +35,8 @@ export default async function DashboardPage() {
     getRecentUnlocks(user.id),
     getUpcomingCalls(),
     getCommunityActivity(user),
-    canAccessJobBoard(user),
-    getSetting("progression.jobBoardMinStars"),
+    getNextBookingFor(user.id),
   ]);
-
-  const recentJobs = jobBoardAccess.allowed
-    ? await db.job.findMany({
-        where: { status: "PUBLISHED", minStars: { lte: user.starBalance } },
-        orderBy: { postedAt: "desc" },
-        take: 3,
-      })
-    : [];
 
   const firstName = user.name.split(" ")[0];
   const starTotal = Math.max(5, user.starBalance + 1);
@@ -226,70 +215,57 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          {/* Job board */}
-          <div className="card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <p className="section-title">Job board</p>
-              {jobBoardAccess.allowed && (
-                <Link href="/jobs" className="text-xs text-accent-hi hover:underline">
-                  View all →
-                </Link>
-              )}
-            </div>
-            {jobBoardAccess.allowed ? (
-              recentJobs.length === 0 ? (
-                <p className="text-sm text-ink-mid">No open positions right now. Check back soon.</p>
-              ) : (
-                <ul className="divide-y divide-edge">
-                  {recentJobs.map((job) => (
-                    <li key={job.id}>
-                      <Link
-                        href={`/jobs/${job.id}`}
-                        className="flex items-center gap-4 py-3 hover:bg-overlay/40 -mx-2 px-2 rounded-lg transition-colors"
-                      >
-                        <Avatar name={job.company} size="sm" src={job.companyLogoUrl} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold truncate">{job.title}</p>
-                          <p className="text-xs text-ink-dim truncate">
-                            {job.company} · {enumLabel(job.locationType)}
-                            {job.compensation ? ` · ${job.compensation}` : ""}
-                          </p>
-                        </div>
-                        <Icons.chevronRight className="h-4 w-4 text-ink-dim shrink-0" />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-overlay border border-edge-strong text-ink-dim">
-                  <LockIcon className="h-5 w-5" />
-                </span>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">
-                    Reach {String(jobBoardMin)} Stars to unlock sales opportunities
-                  </p>
-                  <p className="text-xs text-ink-mid mt-0.5">
-                    Companies hire trained salespeople directly from the academy.
-                  </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <StarRow earned={user.starBalance} total={Number(jobBoardMin)} size="sm" />
-                    <span className="text-xs text-ink-dim">
-                      {user.starBalance} / {String(jobBoardMin)}
-                    </span>
-                  </div>
-                </div>
-                <Link href="/training" className="btn btn-secondary btn-sm shrink-0">
-                  Continue Training
-                </Link>
-              </div>
-            )}
-          </div>
         </section>
 
         {/* Right rail */}
         <aside className="space-y-6">
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <p className="section-title">Your next 1-on-1</p>
+              <Link href="/one-on-ones" className="text-xs text-accent-hi hover:underline">
+                All →
+              </Link>
+            </div>
+            {nextBooking ? (
+              (() => {
+                const hosting = nextBooking.hostId === user.id;
+                const link = hosting ? (nextBooking.startUrl ?? nextBooking.joinUrl) : nextBooking.joinUrl;
+                return (
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {hosting ? `With ${nextBooking.learner.name}` : `With ${nextBooking.host.name}`}
+                    </p>
+                    <p className="text-xs text-ink-dim mt-1 flex items-center gap-2 flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <Icons.calendar className="h-3 w-3" />
+                        <LocalTime iso={nextBooking.startsAt.toISOString()} />
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Icons.clock className="h-3 w-3" />
+                        {nextBooking.durationMin} min
+                      </span>
+                    </p>
+                    {link ? (
+                      <a href={link} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm mt-3">
+                        {hosting ? "Start Zoom" : "Join Zoom"}
+                        <Icons.external className="h-3.5 w-3.5" />
+                      </a>
+                    ) : (
+                      <p className="text-xs text-ink-dim mt-3">Video link pending.</p>
+                    )}
+                  </div>
+                );
+              })()
+            ) : (
+              <div>
+                <p className="text-sm text-ink-mid">No session booked. Grab time with a coach.</p>
+                <Link href="/one-on-ones" className="btn btn-secondary btn-sm mt-3">
+                  Book a 1-on-1
+                </Link>
+              </div>
+            )}
+          </div>
+
           <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
               <p className="section-title">Upcoming live calls</p>

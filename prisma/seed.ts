@@ -8,10 +8,11 @@
  *   morgan@demo.conversionlab.io  — Moderator (Morgan Hayes)
  *   jordan@demo.conversionlab.io  — Learner, 0 Stars (fresh start)
  *   alex@demo.conversionlab.io    — Learner, 2 Stars (mid-program: Objection Handling)
- *   taylor@demo.conversionlab.io  — Learner, 5 Stars (job board + advanced unlocked)
+ *   taylor@demo.conversionlab.io  — Learner, 5 Stars (advanced content unlocked)
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { localDateParts, slotKeyFor, zonedTimeToUtc } from "../src/lib/booking";
 
 const db = new PrismaClient();
 
@@ -46,8 +47,9 @@ async function main() {
   await db.notification.deleteMany();
   await db.unlockEvent.deleteMany();
   await db.starTransaction.deleteMany();
-  await db.jobApplication.deleteMany();
-  await db.job.deleteMany();
+  await db.booking.deleteMany();
+  await db.availabilityWindow.deleteMany();
+  await db.hostAvailability.deleteMany();
   await db.callRecording.deleteMany();
   await db.callAttendee.deleteMany();
   await db.liveCall.deleteMany();
@@ -58,8 +60,6 @@ async function main() {
   await db.message.deleteMany();
   await db.channelMembership.deleteMany();
   await db.channel.deleteMany();
-  await db.resource.deleteMany();
-  await db.resourceCategory.deleteMany();
   await db.quizAttempt.deleteMany();
   await db.quizAnswer.deleteMany();
   await db.quizQuestion.deleteMany();
@@ -568,9 +568,8 @@ async function main() {
   }
   await db.unlockEvent.createMany({
     data: [
-      { userId: alex.id, entityType: "resource", entityId: null, title: "Objection Cheat Sheet", atStars: 1, createdAt: daysAgo(21) },
+      { userId: alex.id, entityType: "recording", entityId: null, title: "Cold Calling Roleplay — Full Session", atStars: 1, createdAt: daysAgo(21) },
       { userId: alex.id, entityType: "module", entityId: closing.id, title: "Closing", atStars: 2, createdAt: daysAgo(12) },
-      { userId: alex.id, entityType: "resource", entityId: null, title: "Closing Framework", atStars: 2, createdAt: daysAgo(12) },
     ],
   });
 
@@ -594,37 +593,6 @@ async function main() {
   });
   taylorBalance += 1;
 
-  console.log("Creating resource library…");
-  const categoryNames = ["Scripts", "Objection Handling", "Cold Calling", "Closing", "Discovery", "Mindset", "Templates"];
-  const categories: Record<string, string> = {};
-  for (let i = 0; i < categoryNames.length; i++) {
-    const c = await db.resourceCategory.create({ data: { name: categoryNames[i], sortOrder: i } });
-    categories[categoryNames[i]] = c.id;
-  }
-  const resourceSeeds = [
-    { title: "Discovery Call Framework", description: "The 5-stage discovery structure on one page — frame, current state, desired state, gap, consequence.", type: "PDF", category: "Discovery", minStars: 0 },
-    { title: "Cold Call Script", description: "Word-for-word opener, permission bridge, and 15-second pitch that earns the next 3 minutes.", type: "SCRIPT", category: "Cold Calling", minStars: 0 },
-    { title: "First 30 Days Mindset Guide", description: "Daily standards, KPI targets, and the review ritual for your first month in the program.", type: "DOCUMENT", category: "Mindset", minStars: 0 },
-    { title: "Objection Cheat Sheet", description: "The 12 most common objections with A.R.C. responses for each. Print it. Drill it.", type: "CHEAT_SHEET", category: "Objection Handling", minStars: 1 },
-    { title: "Sales Script Vault", description: "Complete script library: openers, discovery tracks, voicemails, and follow-up sequences.", type: "SCRIPT", category: "Scripts", minStars: 2 },
-    { title: "Closing Framework", description: "Summary close, assumptive close, and negotiation trade-list — with exact language.", type: "PDF", category: "Closing", minStars: 2 },
-    { title: "Follow-Up Email Templates", description: "9 templates that revive stalled deals without sounding desperate.", type: "TEMPLATE", category: "Templates", minStars: 1 },
-    { title: "Advanced Objection Handling Resources", description: "Multi-stakeholder objections, procurement pushback, and competitive displacement plays.", type: "DOCUMENT", category: "Objection Handling", minStars: 3 },
-  ] as const;
-  for (const r of resourceSeeds) {
-    await db.resource.create({
-      data: {
-        title: r.title,
-        description: r.description,
-        type: r.type,
-        categoryId: categories[r.category],
-        url: `https://example.com/resources/${r.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`,
-        minStars: r.minStars,
-        status: "PUBLISHED",
-      },
-    });
-  }
-
   console.log("Creating community…");
   const channelSeeds = [
     { slug: "general", name: "general", description: "Introductions, announcements, and everything in between", section: "COMMUNITY", minStars: 0, sortOrder: 0 },
@@ -634,7 +602,7 @@ async function main() {
     { slug: "cold-calling", name: "cold-calling", description: "Openers, dial sessions, and call reviews", section: "COMMUNITY", minStars: 0, sortOrder: 4 },
     { slug: "closing", name: "closing", description: "Deal strategy and closing tactics", section: "COMMUNITY", minStars: 0, sortOrder: 5 },
     { slug: "advanced-sales", name: "advanced-sales", description: "For members at 3+ Stars: enterprise motions and advanced plays", section: "ADVANCED", minStars: 3, sortOrder: 0 },
-    { slug: "job-prep", name: "job-prep", description: "Interview prep and placement support for job-board members", section: "ADVANCED", minStars: 3, sortOrder: 1 },
+    { slug: "job-prep", name: "job-prep", description: "Interview prep and career support for advanced members", section: "ADVANCED", minStars: 3, sortOrder: 1 },
     { slug: "moderators", name: "moderators", description: "Staff coordination", section: "STAFF", minStars: 0, minRole: "MODERATOR", sortOrder: 0 },
     { slug: "announcements", name: "announcements", description: "Official academy announcements", section: "COMMUNITY", minStars: 0, readOnly: true, sortOrder: 6 },
   ] as const;
@@ -782,86 +750,64 @@ async function main() {
     },
   });
 
-  console.log("Creating job board…");
-  const jobSeeds = [
-    {
-      company: "Northstar Solar",
-      title: "Remote Appointment Setter",
-      location: "Remote (US)",
-      locationType: "REMOTE",
-      employmentType: "FULL_TIME",
-      category: "APPOINTMENT_SETTER",
-      compensation: "$55–75k OTE",
-      baseSalary: "$36k",
-      commission: "$75–150 per held appointment",
-      description:
-        "Set qualified appointments for our residential solar closers from warm inbound leads. You'll run 60–80 dials a day with a proven script, qualify homeowners, and book them onto closer calendars.\n\nWe promote setters to closer seats internally — top setters move up within 9–12 months.",
-      requirements: "Coachable, consistent, and comfortable on the phone. Academy training in cold calling required. No prior industry experience needed.",
-      minStars: 0,
-    },
-    {
-      company: "Meridian Software",
-      title: "Sales Development Representative (SDR)",
-      location: "Austin, TX",
-      locationType: "HYBRID",
-      employmentType: "FULL_TIME",
-      category: "SDR",
-      compensation: "$80k OTE",
-      baseSalary: "$52k",
-      commission: "Per qualified opportunity + accelerators above quota",
-      description:
-        "Prospect into mid-market operations teams for our logistics platform. Multi-channel outbound: calls, email, LinkedIn. You'll own a territory and partner with two AEs.\n\nClear promotion path to AE within 12–18 months for consistent performers.",
-      requirements: "Discovery fundamentals and objection-handling ability. We interview with a live cold-call roleplay — academy members have a strong track record here.",
-      minStars: 0,
-    },
-    {
-      company: "Apex Performance Group",
-      title: "High-Ticket Closer",
-      location: "Remote (Worldwide)",
-      locationType: "REMOTE",
-      employmentType: "COMMISSION_ONLY",
-      category: "CLOSER",
-      compensation: "$150–250k OTE",
-      commission: "12% of cash collected, uncapped · avg deal $9,800",
-      description:
-        "Close pre-qualified, inbound strategy calls for an established B2B coaching offer ($15M+/yr). 4–6 booked calls per day on your calendar — your job is to run a tight discovery, handle the decision, and collect payment on the call.\n\nThis is a professional closing floor: daily call reviews, live coaching, and a team that takes craft seriously.",
-      requirements: "Proven closing experience OR completion of the full academy program including the Closing assessment. Live roleplay final interview. 5-Star academy members get a guaranteed first-round interview.",
-      minStars: 5,
-    },
-    {
-      company: "Beacon Health Tech",
-      title: "Account Executive",
-      location: "Chicago, IL",
-      locationType: "HYBRID",
-      employmentType: "FULL_TIME",
-      category: "ACCOUNT_EXECUTIVE",
-      compensation: "$140k OTE",
-      baseSalary: "$70k",
-      commission: "8% of ARR closed, accelerators at 110%",
-      description:
-        "Own the full sales cycle for our patient-scheduling platform: discovery through close, deal sizes $20–80k ARR, 45-day average cycle. SDR support after month three.\n\nYou'll join a 6-person pod with a player-coach manager and weekly deal strategy reviews.",
-      requirements: "Full-cycle experience or demonstrated mastery of discovery + closing frameworks (academy Closing module completion strongly preferred).",
-      minStars: 4,
-    },
-  ] as const;
-  const jobs = [];
-  for (const j of jobSeeds) {
-    jobs.push(
-      await db.job.create({
-        data: { ...j, status: "PUBLISHED", postedAt: daysAgo(Math.floor(Math.random() * 6) + 1) },
-      })
-    );
-  }
-  // Taylor has applied to the closer role
-  await db.jobApplication.create({
+  console.log("Creating 1-on-1 availability + bookings…");
+  const adminAvailability = await db.hostAvailability.create({
     data: {
-      jobId: jobs[2].id,
-      userId: taylor.id,
-      status: "UNDER_REVIEW",
-      message:
-        "I've closed $2.1M across three high-ticket coaching offers over the last two years (31% close rate, verified). Completed the full academy program including the live roleplay certification. Happy to do a live close roleplay as the first interview step.",
-      resumeUrl: "https://example.com/resumes/taylor-brooks.pdf",
-      createdAt: daysAgo(3),
+      hostId: admin.id,
+      timezone: "America/New_York",
+      slotMinutes: 30,
+      minNoticeMinutes: 120,
+      acceptingBookings: true,
+      windows: {
+        create: [1, 2, 3, 4, 5].flatMap((dayOfWeek) => [
+          { dayOfWeek, startMinute: 10 * 60, endMinute: 12 * 60 },
+          { dayOfWeek, startMinute: 14 * 60, endMinute: 16 * 60 },
+        ]),
+      },
+    },
+  });
+  await db.hostAvailability.create({
+    data: {
+      hostId: moderator.id,
+      timezone: "America/Chicago",
+      slotMinutes: 45,
+      minNoticeMinutes: 60,
+      acceptingBookings: true,
+      windows: { create: [2, 4].map((dayOfWeek) => ({ dayOfWeek, startMinute: 17 * 60, endMinute: 20 * 60 })) },
+    },
+  });
+  // Alex has a confirmed session with John on the next weekday at least two days out, 10:00 ET.
+  let sessionStart: Date | null = null;
+  for (let n = 2; n <= 8 && !sessionStart; n++) {
+    const p = localDateParts("America/New_York", daysFromNow(n));
+    if (p.weekday >= 1 && p.weekday <= 5) sessionStart = zonedTimeToUtc("America/New_York", p.year, p.month, p.day, 10, 0);
+  }
+  const alexBooking = await db.booking.create({
+    data: {
+      hostId: admin.id,
+      learnerId: alex.id,
+      startsAt: sessionStart!,
+      endsAt: new Date(sessionStart!.getTime() + 30 * 60 * 1000),
+      durationMin: adminAvailability.slotMinutes,
+      learnerTz: "America/Los_Angeles",
+      note: "Want to run my price objection responses past you before Thursday's roleplay.",
+      slotKey: slotKeyFor(admin.id, sessionStart!),
+      createdAt: daysAgo(1),
+    },
+  });
+  await db.booking.create({
+    data: {
+      hostId: moderator.id,
+      learnerId: taylor.id,
+      startsAt: daysAgo(9, 17),
+      endsAt: daysAgo(9, 17.75),
+      durationMin: 45,
+      learnerTz: "America/Chicago",
+      status: "CANCELLED",
+      cancelledAt: daysAgo(10),
+      cancelledById: taylor.id,
+      cancelReason: "Client call ran over — will rebook.",
+      createdAt: daysAgo(14),
     },
   });
 
@@ -872,7 +818,8 @@ async function main() {
       { userId: alex.id, type: "NEW_DM", title: "New message from Taylor Brooks", body: "That session was solid. Your acknowledge step is way smoother already…", linkUrl: `/messages/${dm.id}`, createdAt: daysAgo(0, 8) },
       { userId: alex.id, type: "STAR_EARNED", title: "Star earned — you now have 2 Stars", body: "Discovery completed", linkUrl: "/dashboard", readAt: daysAgo(11), createdAt: daysAgo(12) },
       { userId: alex.id, type: "CONTENT_UNLOCKED", title: "New content unlocked (2)", body: "Closing, Closing Framework", linkUrl: "/dashboard", readAt: daysAgo(11), createdAt: daysAgo(12) },
-      { userId: taylor.id, type: "APPLICATION_UPDATE", title: "Application update: High-Ticket Closer", body: "Apex Performance Group moved your application to Under Review.", linkUrl: "/jobs/applications", createdAt: daysAgo(2) },
+      { userId: alex.id, type: "BOOKING_CONFIRMED", title: "1-on-1 booked with John Bennett", body: "Your join link is on the 1-on-1s page.", linkUrl: "/one-on-ones", createdAt: daysAgo(1) },
+      { userId: admin.id, type: "BOOKING_CONFIRMED", title: "Alex Carter booked a 1-on-1 with you", body: "Note: Want to run my price objection responses past you before Thursday's roleplay.", linkUrl: "/one-on-ones", createdAt: daysAgo(1) },
       { userId: jordan.id, type: "SYSTEM", title: "Welcome to Conversion Lab", body: "Start with Sales Foundations — your first Star is waiting.", linkUrl: "/training", createdAt: daysAgo(1) },
     ],
   });
@@ -882,7 +829,8 @@ async function main() {
     data: [
       { actorId: admin.id, action: "course.publish", entityType: "course", entityId: course.id, details: { title: "Sales Mastery Program" }, createdAt: daysAgo(30) },
       { actorId: admin.id, action: "star.award", entityType: "user", entityId: taylor.id, details: { amount: 1, reason: "Live roleplay certification — passed with distinction" }, createdAt: daysAgo(30) },
-      { actorId: admin.id, action: "job.create", entityType: "job", entityId: jobs[2].id, details: { title: "High-Ticket Closer", company: "Apex Performance Group" }, createdAt: daysAgo(6) },
+      { actorId: admin.id, action: "availability.update", entityType: "host_availability", entityId: adminAvailability.id, details: { timezone: "America/New_York", slotMinutes: 30, acceptingBookings: true, windows: 10 }, createdAt: daysAgo(6) },
+      { actorId: alex.id, action: "booking.create", entityType: "booking", entityId: alexBooking.id, details: { hostId: admin.id, startsAt: alexBooking.startsAt.toISOString() }, createdAt: daysAgo(1) },
       { actorId: owner.id, action: "user.role_changed", entityType: "user", entityId: moderator.id, details: { from: "LEARNER", to: "MODERATOR", name: "Morgan Hayes" }, createdAt: daysAgo(40) },
     ],
   });

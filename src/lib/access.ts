@@ -73,16 +73,6 @@ export async function canAccessModule(
   return { allowed: true };
 }
 
-export function canAccessResource(
-  user: User,
-  resource: { status: string; minStars: number }
-): AccessResult {
-  if (resource.status !== "PUBLISHED" && !isStaff(user.role)) {
-    return { allowed: false, reason: "unpublished" };
-  }
-  return starGate(user, resource.minStars);
-}
-
 export function canAccessChannel(
   user: User,
   channel: Pick<Channel, "minStars" | "minRole" | "isPrivate" | "hidden">,
@@ -114,20 +104,14 @@ export function canPostInChannel(
   return { allowed: true };
 }
 
-export async function canAccessJobBoard(user: User): Promise<AccessResult> {
-  const min = Number(await getSetting("progression.jobBoardMinStars"));
-  return starGate(user, min);
-}
-
-export function canAccessJob(user: User, job: { status: string; minStars: number }): AccessResult {
-  if (job.status !== "PUBLISHED" && !isStaff(user.role)) {
-    return { allowed: false, reason: "unpublished" };
-  }
-  return starGate(user, job.minStars);
-}
-
 export function canAccessCall(user: User, call: { minStars: number }): AccessResult {
   return starGate(user, call.minStars);
+}
+
+/** Learners can book 1-on-1s once they reach the admin-configured star threshold (0 = everyone). */
+export async function canBookOneOnOne(user: User): Promise<AccessResult> {
+  const min = Number(await getSetting("booking.minStars"));
+  return starGate(user, min);
 }
 
 /**

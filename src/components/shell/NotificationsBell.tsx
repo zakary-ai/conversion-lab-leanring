@@ -25,9 +25,8 @@ const TYPE_ICONS: Record<string, string> = {
   NEW_DM: "💬",
   MENTION: "@",
   REPLY: "↩",
-  JOB_UNLOCKED: "💼",
-  NEW_JOB: "💼",
-  APPLICATION_UPDATE: "📋",
+  BOOKING_CONFIRMED: "📆",
+  BOOKING_CANCELLED: "🚫",
   SYSTEM: "ℹ️",
 };
 
@@ -112,7 +111,7 @@ export function NotificationsBell({ initialCount }: { initialCount: number }) {
               </div>
             ) : items.length === 0 ? (
               <p className="text-sm text-ink-mid text-center py-10 px-4">
-                You&apos;re all caught up. Notifications about stars, unlocks, calls and messages
+                You&apos;re all caught up. Notifications about stars, unlocks, calls, 1-on-1s and messages
                 will appear here.
               </p>
             ) : (

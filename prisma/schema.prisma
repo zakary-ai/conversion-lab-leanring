@@ -57,7 +57,9 @@ model User {
   dmMessages          DmMessage[]
   callAttendees       CallAttendee[]
   hostedCalls         LiveCall[]            @relation("CallHost")
-  jobApplications     JobApplication[]
+  hostAvailability    HostAvailability?
+  hostedBookings      Booking[]             @relation("BookingHost")
+  bookings            Booking[]             @relation("BookingLearner")
   notifications       Notification[]
   auditLogs           AuditLog[]            @relation("AuditActor")
   moderationActions   ModerationAction[]    @relation("ModerationActor")
@@ -335,43 +337,6 @@ model QuizAttempt {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Resource library
-// ─────────────────────────────────────────────────────────────
-
-model ResourceCategory {
-  id        String     @id @default(cuid())
-  name      String     @unique
-  sortOrder Int        @default(0)
-  resources Resource[]
-}
-
-enum ResourceType {
-  PDF
-  DOCUMENT
-  SCRIPT
-  TEMPLATE
-  CHEAT_SHEET
-  LINK
-  VIDEO
-  FILE
-}
-
-model Resource {
-  id          String           @id @default(cuid())
-  title       String
-  description String?
-  type        ResourceType     @default(DOCUMENT)
-  categoryId  String?
-  category    ResourceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  url         String
-  thumbnailUrl String?
-  minStars    Int              @default(0)
-  status      PublishStatus    @default(DRAFT)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-}
-
-// ─────────────────────────────────────────────────────────────
 // Community channels
 // ─────────────────────────────────────────────────────────────
 
@@ -547,83 +512,75 @@ model CallRecording {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Job board
+// 1-on-1 bookings (Calendly-style)
 // ─────────────────────────────────────────────────────────────
 
-enum JobLocationType {
-  REMOTE
-  HYBRID
-  ON_SITE
+// Per-host booking preferences. One row per staff member who has opened the
+// availability editor. Weekly windows live in AvailabilityWindow.
+model HostAvailability {
+  id                String   @id @default(cuid())
+  hostId            String   @unique
+  host              User     @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  // IANA zone the weekly windows are expressed in
+  timezone          String   @default("America/New_York")
+  slotMinutes       Int      @default(30)
+  minNoticeMinutes  Int      @default(120)
+  acceptingBookings Boolean  @default(false)
+  // Zoom user (email or id) meetings are created under; null = ZOOM_USER_ID env
+  zoomUserId        String?
+  updatedAt         DateTime @updatedAt
+
+  windows AvailabilityWindow[]
 }
 
-enum JobEmploymentType {
-  FULL_TIME
-  PART_TIME
-  CONTRACT
-  COMMISSION_ONLY
+// Weekly recurring window in the host's local timezone, minutes since midnight.
+model AvailabilityWindow {
+  id             String           @id @default(cuid())
+  availabilityId String
+  availability   HostAvailability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  dayOfWeek      Int // 0 = Sunday … 6 = Saturday
+  startMinute    Int // 0..1439
+  endMinute      Int // 1..1440, > startMinute
+
+  @@index([availabilityId, dayOfWeek])
 }
 
-enum JobCategory {
-  SETTER
-  APPOINTMENT_SETTER
-  SDR
-  BDR
-  CLOSER
-  ACCOUNT_EXECUTIVE
-  SALES_REPRESENTATIVE
-  SALES_MANAGER
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
 }
 
-model Job {
-  id             String            @id @default(cuid())
-  company        String
-  companyLogoUrl String?
-  title          String
-  location       String?
-  locationType   JobLocationType   @default(REMOTE)
-  employmentType JobEmploymentType @default(FULL_TIME)
-  category       JobCategory       @default(SDR)
-  compensation   String?
-  baseSalary     String?
-  commission     String?
-  description    String
-  requirements   String?
-  minStars       Int               @default(0)
-  status         PublishStatus     @default(DRAFT)
-  postedAt       DateTime          @default(now())
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  // Future: employerId for Employer/Recruiter accounts — role enum already reserves EMPLOYER
-  employerId     String?
+model Booking {
+  id          String        @id @default(cuid())
+  hostId      String
+  host        User          @relation("BookingHost", fields: [hostId], references: [id], onDelete: Cascade)
+  learnerId   String
+  learner     User          @relation("BookingLearner", fields: [learnerId], references: [id], onDelete: Cascade)
+  startsAt    DateTime
+  endsAt      DateTime
+  durationMin Int
+  // Browser timezone at booking time (for display / future email reminders)
+  learnerTz   String
+  note        String?
+  status      BookingStatus @default(CONFIRMED)
+  // "<hostId>|<startsAt ISO>" while CONFIRMED, null once cancelled. Postgres
+  // allows many NULLs in a unique column, so a cancelled slot frees up while a
+  // live booking still blocks a second booking of the same slot.
+  slotKey       String?   @unique
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelReason  String?
+  // Meeting provider abstraction (Zoom built in). Null when unconfigured/failed.
+  meetingProvider String?
+  meetingId       String?
+  joinUrl         String?
+  startUrl        String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  applications JobApplication[]
-}
-
-enum ApplicationStatus {
-  APPLIED
-  UNDER_REVIEW
-  INTERVIEW
-  OFFER
-  HIRED
-  REJECTED
-  WITHDRAWN
-}
-
-model JobApplication {
-  id        String            @id @default(cuid())
-  jobId     String
-  job       Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  message   String?
-  resumeUrl String?
-  answers   Json? // additional requested questions
-  status    ApplicationStatus @default(APPLIED)
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-
-  @@unique([jobId, userId])
-  @@index([userId])
+  @@index([hostId, startsAt])
+  @@index([learnerId, startsAt])
+  @@index([status, startsAt])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -640,9 +597,8 @@ enum NotificationType {
   NEW_DM
   MENTION
   REPLY
-  JOB_UNLOCKED
-  NEW_JOB
-  APPLICATION_UPDATE
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
   SYSTEM
 }
 
@@ -669,7 +625,7 @@ model UnlockEvent {
   id         String   @id @default(cuid())
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entityType String // course | module | resource | channel | job_board | call | recording
+  entityType String // course | module | channel | call | recording
   entityId   String?
   title      String
   atStars    Int
@@ -700,7 +656,7 @@ model AuditLog {
   id         String   @id @default(cuid())
   actorId    String?
   actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
-  action     String // e.g. star.award, user.suspend, module.publish, job.create
+  action     String // e.g. star.award, user.suspend, module.publish, booking.create
   entityType String?
   entityId   String?
   details    Json?

@@ -1,12 +1,12 @@
 import { db } from "@/lib/db";
 import { withAuth, json } from "@/lib/api";
-import { canAccessChannel, canAccessJobBoard, starGate } from "@/lib/access";
+import { canAccessChannel, starGate } from "@/lib/access";
 import { isStaff } from "@/lib/auth";
 
 /**
  * Global search. Results are filtered through the access engine so locked or
- * private content never leaks: lessons in star-gated courses, restricted
- * jobs, and staff channels are excluded for users without access.
+ * private content never leaks: lessons in star-gated courses and staff
+ * channels are excluded for users without access.
  */
 export async function GET(req: Request) {
   return withAuth(async (user) => {
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     const contains = { contains: q, mode: "insensitive" as const };
     const publishedOnly = staff ? {} : { status: "PUBLISHED" as const };
 
-    const [courses, lessons, resources, channels, users, jobs] = await Promise.all([
+    const [courses, lessons, channels, users] = await Promise.all([
       db.course.findMany({
         where: { title: contains, ...publishedOnly },
         take: 4,
@@ -37,11 +37,6 @@ export async function GET(req: Request) {
           },
         },
       }),
-      db.resource.findMany({
-        where: { title: contains, ...publishedOnly },
-        take: 4,
-        select: { id: true, title: true, minStars: true },
-      }),
       db.channel.findMany({
         where: { name: contains },
         take: 4,
@@ -51,11 +46,6 @@ export async function GET(req: Request) {
         where: { name: contains, status: "ACTIVE" },
         take: 4,
         select: { id: true, name: true, starBalance: true },
-      }),
-      db.job.findMany({
-        where: { OR: [{ title: contains }, { company: contains }], ...publishedOnly },
-        take: 4,
-        select: { id: true, title: true, company: true, minStars: true, status: true },
       }),
     ]);
 
@@ -84,16 +74,6 @@ export async function GET(req: Request) {
         locked: !gate.allowed,
       });
     }
-    for (const r of resources) {
-      const gate = starGate(user, r.minStars);
-      results.push({
-        type: "Resources",
-        id: r.id,
-        title: r.title,
-        href: `/resources`,
-        locked: !gate.allowed,
-      });
-    }
     for (const ch of channels) {
       const membership = await db.channelMembership.findUnique({
         where: { channelId_userId: { channelId: ch.id, userId: user.id } },
@@ -118,20 +98,6 @@ export async function GET(req: Request) {
         subtitle: `${u.starBalance} ${u.starBalance === 1 ? "Star" : "Stars"}`,
         href: `/messages?to=${u.id}`,
       });
-    }
-    const jobBoard = await canAccessJobBoard(user);
-    if (jobBoard.allowed) {
-      for (const j of jobs) {
-        const gate = starGate(user, j.minStars);
-        if (!gate.allowed) continue; // restricted jobs never leak through search
-        results.push({
-          type: "Jobs",
-          id: j.id,
-          title: j.title,
-          subtitle: j.company,
-          href: `/jobs/${j.id}`,
-        });
-      }
     }
 
     return json({ results });
