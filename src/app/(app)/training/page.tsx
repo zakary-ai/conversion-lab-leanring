@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { canAccessCourse } from "@/lib/access";
 import { getCourseProgress } from "@/lib/progress";
 import { ProgressBar } from "@/components/ui/Progress";
-import { LockChip, LockIcon } from "@/components/ui/Locked";
+import { LockChip, LockOverlay } from "@/components/ui/Locked";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icons } from "@/components/ui/icons";
 
@@ -82,11 +82,7 @@ export default async function TrainingPage() {
                     <ProgressBar percent={progress.percent} />
                   </div>
                 ) : (
-                  <div className="mt-4 flex items-center gap-2 text-xs text-ink-dim">
-                    <LockIcon className="h-3.5 w-3.5" />
-                    Earn {Math.max(0, (access.reason === "stars" ? access.required ?? 0 : 0) - user.starBalance)}{" "}
-                    more {(access.reason === "stars" ? access.required ?? 0 : 0) - user.starBalance === 1 ? "Star" : "Stars"} to unlock this course
-                  </div>
+                  <div className="mt-4 text-xs text-ink-dim">Locked</div>
                 )}
               </>
             );
@@ -100,8 +96,15 @@ export default async function TrainingPage() {
                 {inner}
               </Link>
             ) : (
-              <div key={course.id} className="card p-6 opacity-75">
+              <div key={course.id} className="card p-6 relative overflow-hidden" aria-label={`${course.title} (locked)`}>
                 {inner}
+                <LockOverlay
+                  required={access.reason === "stars" ? access.required ?? 0 : 0}
+                  current={user.starBalance}
+                  what="this program"
+                  title={course.title}
+                  message={access.reason === "stars" ? undefined : "This program isn't available to you yet."}
+                />
               </div>
             );
           })}

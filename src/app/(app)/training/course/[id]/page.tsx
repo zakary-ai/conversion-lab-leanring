@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { canAccessCourse, canAccessModule } from "@/lib/access";
 import { getCourseProgress, getModuleProgress } from "@/lib/progress";
 import { ProgressBar } from "@/components/ui/Progress";
-import { LockedNotice, LockIcon } from "@/components/ui/Locked";
+import { LockedNotice, LockIcon, LockOverlay } from "@/components/ui/Locked";
 import { Icons } from "@/components/ui/icons";
 import { StarIcon } from "@/components/ui/Star";
 
@@ -87,7 +87,22 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
 
       <div className="space-y-4">
         {moduleData.map(({ mod, access: modAccess, progress: modProgress }, mi) => (
-          <section key={mod.id} className={`card overflow-hidden ${!modAccess.allowed ? "opacity-80" : ""}`}>
+          <section key={mod.id} className="card overflow-hidden relative">
+            {!modAccess.allowed && (
+              <LockOverlay
+                required={modAccess.reason === "stars" ? modAccess.required ?? 0 : 0}
+                current={user.starBalance}
+                what="this module"
+                title={mod.title}
+                message={
+                  modAccess.reason === "stars"
+                    ? undefined
+                    : modAccess.reason === "prerequisite"
+                      ? `Finish ${modAccess.prerequisiteTitle} before you can access this module.`
+                      : "This module isn't available to you yet."
+                }
+              />
+            )}
             <div className="flex items-center gap-4 px-6 py-4 border-b border-edge bg-raised/40">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-overlay border border-edge text-sm font-bold text-ink-mid">
                 {mi + 1}

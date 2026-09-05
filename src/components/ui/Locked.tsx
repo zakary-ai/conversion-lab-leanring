@@ -58,3 +58,56 @@ export function LockChip({ required }: { required: number }) {
     </span>
   );
 }
+
+/**
+ * A lock that sits over a card and stays there: the content beneath is
+ * dimmed and blurred, and the message says exactly what it takes to open it.
+ * The parent needs `relative` (and usually `overflow-hidden`).
+ */
+export function LockOverlay({
+  required,
+  current,
+  what = "this",
+  title,
+  message,
+}: {
+  required: number;
+  current: number;
+  what?: string;
+  /** Name of the locked thing, shown so the blur doesn't hide what it is */
+  title?: string;
+  /** Overrides the star message, e.g. for a prerequisite module */
+  message?: string;
+}) {
+  const needed = Math.max(0, required - current);
+  const stars = (n: number) => `${n} ${n === 1 ? "Star" : "Stars"}`;
+  return (
+    <div
+      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-[inherit] bg-bg/65 backdrop-blur-[2px] px-6 py-6 text-center"
+      role="status"
+    >
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-overlay border border-edge-strong text-ink shadow-lg shadow-black/40">
+        <LockIcon className="h-6 w-6" />
+      </div>
+      <p className="font-bold text-ink mt-1">{title ? `${title} is locked` : "Locked"}</p>
+      {message ? (
+        <p className="text-sm text-ink-mid">{message}</p>
+      ) : (
+        <>
+          <p className="text-sm text-ink-mid">
+            You need <span className="text-accent-hi font-semibold">{stars(required)}</span> before you can access {what}.
+          </p>
+          <p className="text-xs text-ink-dim">
+            You have {current} · {needed === 0 ? "ready to unlock" : `earn ${needed} more`}
+          </p>
+          <div className="flex items-center gap-1 mt-1">
+            {Array.from({ length: Math.min(required, 10) }).map((_, i) => (
+              <StarIcon key={i} className="h-4 w-4" filled={i < current} />
+            ))}
+            {required > 10 && <span className="text-xs text-ink-dim">+{required - 10}</span>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
