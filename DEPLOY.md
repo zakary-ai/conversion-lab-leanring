@@ -40,6 +40,8 @@ DATABASE_URL="<neon connection string>" npm run db:seed
 
 The seed prints the six demo accounts when it finishes (password `academy123`).
 
+**Make it automatic.** Put the Neon string in the local `.env` as `DATABASE_URL` so a plain `npm run db:push` targets it, and rely on the `vercel-build` script (`prisma db push && next build`) that Vercel runs on every deploy — schema changes then apply themselves. `db push` without `--accept-data-loss` refuses destructive changes, so a deploy fails loudly instead of dropping data.
+
 ## 4. Open the app
 
 Visit your `https://<project>.vercel.app` URL and sign in with one of the seeded demo accounts.
@@ -51,7 +53,7 @@ Everything below is off by default and degrades honestly (clear in-app notices, 
 | Feature | Env vars | Where to get them |
 | --- | --- | --- |
 | Embedded live call rooms (used when Zoom isn't configured) | `DAILY_API_KEY`, `DAILY_DOMAIN` | [daily.co](https://www.daily.co) dashboard |
-| Zoom-hosted live calls (one-off and repeating) and 1-on-1 bookings | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` | [Zoom App Marketplace](https://marketplace.zoom.us) → Develop → Build App → **Server-to-Server OAuth** (scopes `meeting:write:admin`, `meeting:update:admin`, `meeting:delete:admin`). A repeating call becomes one Zoom recurring meeting; the host opens the start link from the call page. `ZOOM_USER_ID` is the email of the licensed user meetings are created under; hosts can override it with their own seat in **1-on-1s → Manage availability** |
+| Zoom-hosted live calls (one-off and repeating) and 1-on-1 bookings | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` | [Zoom App Marketplace](https://marketplace.zoom.us) → Develop → Build App → **Server-to-Server OAuth** (scopes `meeting:write:admin`, `meeting:update:admin`, `meeting:delete:admin`). A repeating call becomes one Zoom recurring meeting; the host opens the start link from the call page. `ZOOM_USER_ID` is the email of the licensed user meetings are created under; hosts can override it with their own seat in **1-on-1s → Manage availability**. These are the academy-wide fallback: any staff member can instead connect their own Zoom app on **Profile → Zoom account**, and everything they host is created there. Per-user secrets are encrypted with `CREDENTIALS_SECRET` (falls back to `SESSION_SECRET`) |
 | Password-reset & notification email | `RESEND_API_KEY`, `EMAIL_FROM` | [resend.com](https://resend.com) (verify a sender domain) |
 | File uploads (training videos, resumes, attachments) | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | any S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2) |
 
@@ -62,5 +64,6 @@ Everything below is off by default and degrades honestly (clear in-app notices, 
 - **DEMO_MODE**: with it set to `false`, the demo endpoint returns 404 — the demo accounts themselves remain and can still sign in with their password, so also change or remove them (Admin → Learners) for a real launch.
 - **Schema changes on an existing database**: this version removed the resource library and job board tables and some notification types. On a database that already has data, run `npx prisma db push --accept-data-loss` (back up first); if the push complains about `NotificationType`, delete rows with the removed types (`JOB_UNLOCKED`, `NEW_JOB`, `APPLICATION_UPDATE`) and re-run.
 - **Recurring calls tables**: this version also adds `CallSeries` and nullable Zoom columns on `LiveCall`; `npm run db:push` adds them without data loss.
+- **Per-user Zoom**: adds the `ZoomConnection` table and a nullable `meetingConnectionId` on `Booking`, `LiveCall` and `CallSeries`; `npm run db:push` adds them without data loss.
 - **Time zone column**: this version adds a nullable `User.timezone`. `npm run db:push` adds it without data loss; existing accounts keep browser-zone display until they pick a zone on their profile.
 - **Realtime**: chat/notifications use light polling and work on serverless out of the box. For multi-region scale, swap the polling transport for SSE/WebSockets behind the same client hooks.

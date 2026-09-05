@@ -6,13 +6,16 @@
  * built-in integration — Google Meet, Teams etc. can be added by implementing
  * MeetingProvider.
  *
- * Required environment variables for the Zoom integration:
- *   ZOOM_ACCOUNT_ID     — from the Server-to-Server OAuth app
- *   ZOOM_CLIENT_ID
- *   ZOOM_CLIENT_SECRET
- *   ZOOM_USER_ID        — email (or user id) of the licensed Zoom user that
- *                         meetings are created under by default. A host can
- *                         override this in their availability settings.
+ * Credentials come from one of two places (see lib/zoom-connections.ts):
+ *   - a staff member's own ZoomConnection, entered on their profile, used for
+ *     everything they host; or
+ *   - the academy-wide environment variables, used for hosts without one:
+ *       ZOOM_ACCOUNT_ID     — from the Server-to-Server OAuth app
+ *       ZOOM_CLIENT_ID
+ *       ZOOM_CLIENT_SECRET
+ *       ZOOM_USER_ID        — email (or user id) of the licensed Zoom user that
+ *                             meetings are created under by default. A host can
+ *                             override this in their availability settings.
  *
  * The app needs the scopes meeting:write:admin, meeting:update:admin and
  * meeting:delete:admin (granular: meeting:write:meeting:admin,
@@ -60,9 +63,26 @@ export interface MeetingProvider {
   ): Promise<void>;
   /** Delete a meeting, or a single occurrence of a recurring one. */
   deleteMeeting(meetingId: string, occurrenceId?: string): Promise<void>;
+  /**
+   * Check the credentials (and, when the app has user:read scope, that the
+   * user exists). Throws a MeetingProviderError with a human-readable message.
+   */
+  verify(userId: string): Promise<void>;
 }
 
-let tokenCache: { token: string; expiresAt: number } | null = null;
+export type ZoomCredentials = {
+  accountId: string;
+  clientId: string;
+  clientSecret: string;
+  /** Zoom user meetings are created under when nothing more specific is set. */
+  defaultUserId: string;
+};
+
+/** A provider failure with a message safe to show to the person who owns the credentials. */
+export class MeetingProviderError extends Error {}
+
+/** One access token per set of credentials (keyed by account + client id). */
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 const ZOOM_SETTINGS = {
   join_before_host: false,
@@ -75,30 +95,64 @@ function zoomTime(d: Date) {
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+/** Pull the human-readable part out of a Zoom error body. */
+function zoomReason(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { reason?: string; message?: string; error_description?: string };
+    return parsed.reason ?? parsed.message ?? parsed.error_description ?? body;
+  } catch {
+    return body;
+  }
+}
+
 class ZoomProvider implements MeetingProvider {
   readonly name = "Zoom";
-  private accountId = process.env.ZOOM_ACCOUNT_ID ?? "";
-  private clientId = process.env.ZOOM_CLIENT_ID ?? "";
-  private clientSecret = process.env.ZOOM_CLIENT_SECRET ?? "";
-  readonly defaultUserId = process.env.ZOOM_USER_ID ?? "";
+  readonly defaultUserId: string;
+  private readonly accountId: string;
+  private readonly clientId: string;
+  private readonly clientSecret: string;
+
+  constructor(creds: ZoomCredentials) {
+    this.accountId = creds.accountId;
+    this.clientId = creds.clientId;
+    this.clientSecret = creds.clientSecret;
+    this.defaultUserId = creds.defaultUserId;
+  }
 
   get configured() {
     return Boolean(this.accountId && this.clientId && this.clientSecret);
   }
 
-  private async getToken(): Promise<string> {
-    if (!this.configured) throw new Error("Zoom is not configured");
-    if (tokenCache && Date.now() < tokenCache.expiresAt - 60_000) return tokenCache.token;
+  private get cacheKey() {
+    return `${this.accountId}:${this.clientId}`;
+  }
+
+  private async fetchToken(): Promise<{ token: string; expiresAt: number }> {
+    if (!this.configured) throw new MeetingProviderError("Zoom is not configured");
     const basic = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
     const url = `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${encodeURIComponent(this.accountId)}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
     });
-    if (!res.ok) throw new Error(`Zoom token request failed: ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      const reason = zoomReason(await res.text());
+      throw new MeetingProviderError(
+        res.status === 400 || res.status === 401
+          ? `Zoom rejected the credentials: ${reason}. Check the account ID, client ID and client secret of your Server-to-Server OAuth app.`
+          : `Zoom token request failed: ${res.status} ${reason}`
+      );
+    }
     const data = (await res.json()) as { access_token: string; expires_in: number };
-    tokenCache = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
-    return tokenCache.token;
+    return { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
+  }
+
+  private async getToken(): Promise<string> {
+    const cached = tokenCache.get(this.cacheKey);
+    if (cached && Date.now() < cached.expiresAt - 60_000) return cached.token;
+    const fresh = await this.fetchToken();
+    tokenCache.set(this.cacheKey, fresh);
+    return fresh.token;
   }
 
   private async request(path: string, init: RequestInit & { okStatuses?: number[] } = {}) {
@@ -109,9 +163,26 @@ class ZoomProvider implements MeetingProvider {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(rest.headers ?? {}) },
     });
     if (!res.ok && !okStatuses.includes(res.status)) {
-      throw new Error(`Zoom ${rest.method ?? "GET"} ${path} failed: ${res.status} ${await res.text()}`);
+      throw new MeetingProviderError(`Zoom ${rest.method ?? "GET"} ${path} failed: ${res.status} ${zoomReason(await res.text())}`);
     }
     return res;
+  }
+
+  async verify(userId: string) {
+    // Always hit Zoom for the token so a freshly entered (possibly wrong)
+    // secret isn't masked by a token cached from the previous one.
+    const fresh = await this.fetchToken();
+    tokenCache.set(this.cacheKey, fresh);
+    if (!userId) return;
+    const res = await fetch(`https://api.zoom.us/v2/users/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${fresh.token}` },
+    });
+    if (res.status === 404) {
+      throw new MeetingProviderError(`Zoom has no user "${userId}" on this account. Enter the email of a licensed user on the same account as the app.`);
+    }
+    // 400/401/403 here almost always mean the app lacks user:read scope,
+    // which meeting creation doesn't need — so only a definite "not found"
+    // fails verification.
   }
 
   private meetingBody(opts: MeetingDetails) {
@@ -189,9 +260,20 @@ class ZoomProvider implements MeetingProvider {
   }
 }
 
+/** The academy-wide provider from ZOOM_* environment variables (may be unconfigured). */
 export function getMeetingProvider(): MeetingProvider {
-  return new ZoomProvider();
+  return new ZoomProvider({
+    accountId: process.env.ZOOM_ACCOUNT_ID ?? "",
+    clientId: process.env.ZOOM_CLIENT_ID ?? "",
+    clientSecret: process.env.ZOOM_CLIENT_SECRET ?? "",
+    defaultUserId: process.env.ZOOM_USER_ID ?? "",
+  });
+}
+
+/** A provider for one person's own Zoom credentials. */
+export function meetingProviderFor(creds: ZoomCredentials): MeetingProvider {
+  return new ZoomProvider(creds);
 }
 
 export const MEETING_PROVIDER_SETUP_MESSAGE =
-  "The video provider isn't connected yet. An administrator needs to add ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET and ZOOM_USER_ID to create Zoom links automatically.";
+  "No Zoom account is connected for this host. Hosts can connect their own Zoom account from their profile, or an administrator can add academy-wide credentials (ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_USER_ID).";

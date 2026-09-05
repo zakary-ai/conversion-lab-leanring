@@ -5,7 +5,8 @@ import { isAdmin, isStaff } from "./auth";
 import { canBookOneOnOne } from "./access";
 import { notify } from "./notifications";
 import { audit } from "./audit";
-import { getMeetingProvider, MEETING_PROVIDER_SETUP_MESSAGE } from "./providers/meetings";
+import { MEETING_PROVIDER_SETUP_MESSAGE } from "./providers/meetings";
+import { providerForMeeting, resolveMeetingProviderForHost } from "./zoom-connections";
 import {
   BOOKING_HORIZON_DAYS,
   MAX_UPCOMING_BOOKINGS_PER_LEARNER,
@@ -185,10 +186,11 @@ export async function createBooking(params: {
 
   // Video link: best effort, outside the transaction. A provider failure never
   // loses the booking — the UI shows an honest "link unavailable" state.
-  const provider = getMeetingProvider();
-  const zoomUser = availability.zoomUserId?.trim() || provider.defaultUserId;
+  // The host's own Zoom account when they connected one, else the academy's.
+  const resolved = await resolveMeetingProviderForHost(hostId);
   let video: { configured: boolean; message?: string } = { configured: true };
-  if (provider.configured && zoomUser) {
+  if (resolved && resolved.userId) {
+    const { provider, userId: zoomUser, connectionId } = resolved;
     try {
       const meeting = await provider.createMeeting({
         userId: zoomUser,
@@ -205,6 +207,7 @@ export async function createBooking(params: {
           meetingId: meeting.meetingId,
           joinUrl: meeting.joinUrl,
           startUrl: meeting.startUrl,
+          meetingConnectionId: connectionId,
         },
       });
     } catch (err) {
@@ -269,8 +272,8 @@ export async function cancelBooking(params: {
   });
 
   if (booking.meetingId) {
-    const provider = getMeetingProvider();
-    if (provider.configured) {
+    const provider = await providerForMeeting(booking.meetingConnectionId);
+    if (provider) {
       try {
         await provider.deleteMeeting(booking.meetingId);
       } catch (err) {

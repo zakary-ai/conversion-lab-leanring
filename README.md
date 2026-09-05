@@ -62,7 +62,7 @@ Learners start at **0 Stars** and earn them by completing modules (all required 
 - **Direct messages**: member search, 1:1 conversations (schema supports group DMs later), unread counts, recently-active indicators
 - **Live calls**: one-off or repeating (weekly rule in the admin's time zone, every occurrence created up front), star gates, RSVPs, capacity, hosted on Zoom when configured (one recurring Zoom meeting per series; the host gets the start link) or in embedded rooms through the RTC provider abstraction, recordings with their own star gates
 - **Time zones**: every account carries an IANA zone chosen during onboarding (editable on the profile); calls, sessions, chat timestamps and notifications render in it, and changing it also moves the person's 1-on-1 availability and upcoming bookings
-- **1-on-1s**: staff set weekly availability (timezone, session length, minimum notice) in their account; learners pick a coach and a slot in their own timezone; each booking creates a Zoom meeting through the meeting provider abstraction; cancellations, notifications, admin oversight, optional star gate
+- **1-on-1s**: staff set weekly availability (timezone, session length, minimum notice) in their account; learners pick a coach and a slot in their own timezone; each booking creates a Zoom meeting through the meeting provider abstraction — on the host's own Zoom account when they connected one on their profile, else the academy's; cancellations, notifications, admin oversight, optional star gate
 - **Notifications**: in-app center + badge for stars, unlocks, quiz results, calls, DMs, mentions, replies, and 1-on-1 bookings (schema ready for email/push fan-out)
 - **Global search** (⌘K): only ever returns what the user can access
 - **Admin**: command center metrics + trends, visual training builder (create/edit/reorder/publish/archive, quiz editor, learner preview), star management on the ledger, learner management (progress, quiz performance, star history, manual adjustments, suspension, roles), calls + recordings, 1-on-1 bookings overview, platform settings, audit log
@@ -77,9 +77,10 @@ External providers are integrated behind clean interfaces and degrade honestly w
 
 | Provider | Env vars | Without credentials |
 | --- | --- | --- |
-| Zoom (live calls + 1-on-1s) | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` | Calls and series are scheduled without a Zoom link; the admin sees an honest notice |
+| Zoom (live calls + 1-on-1s) | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` (academy-wide fallback; staff can connect their own Zoom account on their profile instead) | Hosts without their own Zoom account get calls and series scheduled without a link; the admin sees an honest notice |
 | Daily.co (embedded call rooms, used when Zoom isn't configured) | `DAILY_API_KEY`, `DAILY_DOMAIN` | Scheduling/RSVPs work; join screen shows a clear "provider not connected" notice |
-| Zoom (1-on-1 meetings) | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_USER_ID` | Bookings, notifications and cancellations work; the session shows "video link not connected" instead of a link |
+| Zoom (1-on-1 meetings) | same as above, or the host's own connection from **Profile → Zoom account** | Bookings, notifications and cancellations work; the session shows "video link not connected" instead of a link |
+| Credential encryption | `CREDENTIALS_SECRET` (falls back to `SESSION_SECRET`) | Per-user Zoom secrets are encrypted with the session secret instead |
 | Resend (email) | `RESEND_API_KEY`, `EMAIL_FROM` | Password-reset links are logged to the server console in development |
 | S3-compatible storage | `S3_*` | Local `./storage` directory served via `/api/files` |
 | Video hosting | — | YouTube/Vimeo/direct URLs resolve out of the box (`src/lib/providers/video.ts`); add Mux/Cloudflare Stream by adding a resolver |

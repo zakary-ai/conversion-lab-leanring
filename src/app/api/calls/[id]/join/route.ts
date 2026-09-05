@@ -42,7 +42,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
         configured: false,
         provider: provider.name,
         message:
-          "No video provider is connected for this call. An administrator can add Zoom credentials (ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_USER_ID) to host calls on Zoom, or DAILY_API_KEY and DAILY_DOMAIN for embedded rooms.",
+          "No video provider is connected for this call. The host can connect their Zoom account on their profile, or an administrator can add academy-wide Zoom credentials (ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_USER_ID) or DAILY_API_KEY and DAILY_DOMAIN for embedded rooms.",
       });
     }
 

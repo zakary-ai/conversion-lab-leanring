@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { DAY_NAMES, SLOT_LENGTH_OPTIONS, hhmmToMinutes, minutesToHHMM, type WeeklyWindow } from "@/lib/booking";
@@ -37,13 +38,17 @@ export function AvailabilityEditor({
   providerConfigured,
   providerName,
   hasDefaultMeetingUser,
+  ownZoomUserId,
 }: {
   initial: AvailabilityInitial | null;
   /** The host's account zone — the default for new availability */
   accountTimeZone: string | null;
+  /** Links can be created for this host: academy credentials or their own connection */
   providerConfigured: boolean;
   providerName: string;
   hasDefaultMeetingUser: boolean;
+  /** Set when the host connected their own Zoom account on their profile */
+  ownZoomUserId: string | null;
 }) {
   const router = useRouter();
   const [timezone, setTimezone] = useState(initial?.timezone ?? accountTimeZone ?? "");
@@ -140,13 +145,11 @@ export function AvailabilityEditor({
     <div className="space-y-6">
       {!providerConfigured && (
         <div className="card border-accent/25 p-4 text-sm">
-          <p className="font-semibold text-accent-hi">Video provider not connected</p>
+          <p className="font-semibold text-accent-hi">{providerName} not connected</p>
           <p className="text-ink-mid mt-1">
-            Bookings work now. To create {providerName} links automatically, an administrator needs to add{" "}
-            <code className="text-xs bg-overlay rounded px-1.5 py-0.5">ZOOM_ACCOUNT_ID</code>,{" "}
-            <code className="text-xs bg-overlay rounded px-1.5 py-0.5">ZOOM_CLIENT_ID</code>,{" "}
-            <code className="text-xs bg-overlay rounded px-1.5 py-0.5">ZOOM_CLIENT_SECRET</code> and{" "}
-            <code className="text-xs bg-overlay rounded px-1.5 py-0.5">ZOOM_USER_ID</code> (see .env.example).
+            Bookings work now, but sessions won&apos;t get a {providerName} link.{" "}
+            <Link href="/profile#zoom" className="underline hover:text-accent-hi">Connect your own {providerName} account</Link> on your
+            profile to create links automatically, or ask an administrator to add academy-wide credentials.
           </p>
         </div>
       )}
@@ -211,6 +214,15 @@ export function AvailabilityEditor({
             />
             <p className="text-xs text-ink-dim mt-1">Slots starting sooner than this are hidden.</p>
           </div>
+          {ownZoomUserId ? (
+            <div>
+              <p className="label">{providerName} account</p>
+              <p className="text-sm pt-2">Your own — meetings are created as {ownZoomUserId}.</p>
+              <p className="text-xs text-ink-dim mt-1">
+                <Link href="/profile#zoom" className="underline hover:text-accent-hi">Manage on your profile</Link>
+              </p>
+            </div>
+          ) : (
           <div>
             <label className="label" htmlFor="zoomUser">{providerName} account (optional)</label>
             <input
@@ -225,9 +237,10 @@ export function AvailabilityEditor({
                 ? "Meetings are created under the academy account unless you enter your own licensed user."
                 : providerConfigured
                   ? "No default account is set — enter the email of a licensed Zoom user to get links."
-                  : "Used once the video provider is connected."}
+                  : "Used once academy-wide Zoom credentials are added. To use your own Zoom, connect it on your profile."}
             </p>
           </div>
+          )}
         </div>
       </section>
 

@@ -63,6 +63,7 @@ model User {
   hostedCalls         LiveCall[]            @relation("CallHost")
   hostedSeries        CallSeries[]          @relation("CallSeriesHost")
   hostAvailability    HostAvailability?
+  zoomConnection      ZoomConnection?
   hostedBookings      Booking[]             @relation("BookingHost")
   bookings            Booking[]             @relation("BookingLearner")
   notifications       Notification[]
@@ -499,6 +500,8 @@ model LiveCall {
   meetingOccurrenceId String?
   joinUrl             String?
   startUrl            String?
+  // ZoomConnection the meeting was created with; null = academy-wide env credentials
+  meetingConnectionId String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -540,6 +543,8 @@ model CallSeries {
   meetingId        String?
   joinUrl          String?
   startUrl         String?
+  // ZoomConnection the meeting was created with; null = academy-wide env credentials
+  meetingConnectionId String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -585,11 +590,32 @@ model HostAvailability {
   slotMinutes       Int      @default(30)
   minNoticeMinutes  Int      @default(120)
   acceptingBookings Boolean  @default(false)
-  // Zoom user (email or id) meetings are created under; null = ZOOM_USER_ID env
+  // Zoom user (email or id) meetings are created under when using the
+  // academy-wide credentials; null = ZOOM_USER_ID env. Ignored when the host
+  // has their own ZoomConnection.
   zoomUserId        String?
   updatedAt         DateTime @updatedAt
 
   windows AvailabilityWindow[]
+}
+
+// A staff member's own Zoom account (Server-to-Server OAuth app). When set,
+// meetings for calls and 1-on-1s they host are created with these credentials
+// instead of the academy-wide ZOOM_* env vars. The client secret is encrypted
+// at rest (lib/secrets.ts); the other fields are identifiers, not secrets.
+model ZoomConnection {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId       String
+  clientId        String
+  clientSecretEnc String
+  // Email (or id) of the licensed Zoom user meetings are created under
+  zoomUserId      String
+  // Last time the credentials were checked against Zoom successfully
+  verifiedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 // Weekly recurring window in the host's local timezone, minutes since midnight.
@@ -634,6 +660,8 @@ model Booking {
   meetingId       String?
   joinUrl         String?
   startUrl        String?
+  // ZoomConnection the meeting was created with; null = academy-wide env credentials
+  meetingConnectionId String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 

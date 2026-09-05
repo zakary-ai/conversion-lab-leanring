@@ -12,13 +12,17 @@ import { Icons } from "@/components/ui/icons";
 import { formatDate, formatTime } from "@/lib/format";
 import { describeTimeZone } from "@/lib/timezone";
 import { ProfileEditor } from "@/components/profile/ProfileEditor";
+import { ZoomConnectionCard } from "@/components/profile/ZoomConnectionCard";
+import { getZoomConnection } from "@/lib/zoom-connections";
+import { getMeetingProvider } from "@/lib/providers/meetings";
 import Link from "next/link";
 
 export const metadata = { title: "Profile" };
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  const [profile, courses, upcomingCalls, nextBooking, availability] = await Promise.all([
+  const staff = isStaff(user.role);
+  const [profile, courses, upcomingCalls, nextBooking, availability, zoomConnection] = await Promise.all([
     db.profile.findUnique({ where: { userId: user.id } }),
     db.course.findMany({
       where: { status: "PUBLISHED" },
@@ -29,8 +33,10 @@ export default async function ProfilePage() {
     }),
     getUpcomingCalls(1),
     getNextBookingFor(user.id),
-    isStaff(user.role) ? db.hostAvailability.findUnique({ where: { hostId: user.id } }) : null,
+    staff ? db.hostAvailability.findUnique({ where: { hostId: user.id } }) : null,
+    staff ? getZoomConnection(user.id) : null,
   ]);
+  const academyZoom = staff ? getMeetingProvider().configured : false;
 
   const courseProgress = await Promise.all(
     courses.map(async (c) => ({
@@ -145,6 +151,16 @@ export default async function ProfilePage() {
                     ? `${availability.slotMinutes}-minute sessions · ${availability.timezone}`
                     : "Set your weekly hours so learners can book time with you."}
                 </p>
+                <p className="text-xs text-ink-dim mt-2">
+                  Zoom:{" "}
+                  {zoomConnection
+                    ? `your account (${zoomConnection.zoomUserId})`
+                    : academyZoom
+                      ? "academy account"
+                      : "not connected"}
+                  {" · "}
+                  <a href="#zoom" className="underline hover:text-accent-hi">manage</a>
+                </p>
                 <Link href="/one-on-ones/availability" className="btn btn-secondary btn-sm mt-3">
                   Manage availability
                 </Link>
@@ -205,6 +221,16 @@ export default async function ProfilePage() {
           )}
         </div>
       </div>
+
+      {staff && (
+        <section id="zoom" className="card p-6 mt-6 scroll-mt-6">
+          <p className="section-title mb-1">Zoom account</p>
+          <p className="text-sm text-ink-mid mb-4">
+            Connect your own Zoom so the calls and 1-on-1s you host get links from your account.
+          </p>
+          <ZoomConnectionCard initial={zoomConnection} academyConfigured={academyZoom} />
+        </section>
+      )}
 
       <section className="card p-6 mt-6">
         <p className="section-title mb-4">Edit profile</p>

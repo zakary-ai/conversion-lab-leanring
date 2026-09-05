@@ -28,7 +28,7 @@ export default async function AdminCallsPage() {
     }),
     db.user.findMany({
       where: { role: { in: ["ADMIN", "SUPER_ADMIN", "MODERATOR"] } },
-      select: { id: true, name: true },
+      select: { id: true, name: true, zoomConnection: { select: { id: true } } },
     }),
   ]);
   const rtc = getRtcProvider();
@@ -39,7 +39,7 @@ export default async function AdminCallsPage() {
       rtcConfigured={rtc.configured}
       rtcName={rtc.name}
       zoomConfigured={zoom.configured}
-      staff={staff}
+      staff={staff.map((s) => ({ id: s.id, name: s.name, hasZoom: s.zoomConnection !== null }))}
       series={series.map((s) => {
         const upcoming = s.calls.filter((c) => c.status === "SCHEDULED" && c.scheduledAt >= now);
         return {

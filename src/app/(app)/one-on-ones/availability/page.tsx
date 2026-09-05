@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, isStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getMeetingProvider } from "@/lib/providers/meetings";
+import { getZoomConnection } from "@/lib/zoom-connections";
 import { AvailabilityEditor } from "@/components/one-on-ones/AvailabilityEditor";
 
 export const metadata = { title: "1-on-1 availability" };
@@ -12,10 +13,13 @@ export default async function AvailabilityPage() {
   const user = await getCurrentUser();
   if (!user || !isStaff(user.role)) redirect("/one-on-ones");
 
-  const availability = await db.hostAvailability.findUnique({
-    where: { hostId: user.id },
-    include: { windows: { orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }] } },
-  });
+  const [availability, ownZoom] = await Promise.all([
+    db.hostAvailability.findUnique({
+      where: { hostId: user.id },
+      include: { windows: { orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }] } },
+    }),
+    getZoomConnection(user.id),
+  ]);
   const provider = getMeetingProvider();
 
   return (
@@ -45,7 +49,8 @@ export default async function AvailabilityPage() {
               }
             : null
         }
-        providerConfigured={provider.configured}
+        providerConfigured={provider.configured || ownZoom !== null}
+        ownZoomUserId={ownZoom?.zoomUserId ?? null}
         providerName={provider.name}
         hasDefaultMeetingUser={Boolean(provider.defaultUserId)}
       />

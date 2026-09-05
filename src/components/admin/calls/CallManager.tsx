@@ -63,9 +63,11 @@ export function CallManager({
 }: {
   calls: CallRow[];
   series: SeriesRow[];
-  staff: { id: string; name: string }[];
+  /** hasZoom = the person connected their own Zoom account on their profile */
+  staff: { id: string; name: string; hasZoom: boolean }[];
   rtcConfigured: boolean;
   rtcName: string;
+  /** Academy-wide ZOOM_* env credentials are set (hosts with their own account can still use Zoom without this) */
   zoomConfigured: boolean;
 }) {
   const tz = useTimeZone();
@@ -117,11 +119,14 @@ export function CallManager({
 
       {!zoomConfigured && (
         <div className="card border-accent/25 p-4 mb-6 text-sm">
-          <p className="font-semibold text-accent-hi">{rtcConfigured ? "Zoom not connected" : "Video provider not connected"}</p>
+          <p className="font-semibold text-accent-hi">{rtcConfigured ? "Academy-wide Zoom not connected" : "Video provider not connected"}</p>
           <p className="text-ink-mid mt-1">
             {rtcConfigured
-              ? `Calls run in embedded ${rtcName} rooms. To host them on Zoom instead, add `
-              : "Scheduling, RSVPs and recordings work now. To host calls on Zoom, add "}
+              ? `Calls run in embedded ${rtcName} rooms. `
+              : "Scheduling, RSVPs and recordings work now. "}
+            Calls can be hosted on Zoom when their host has connected their own Zoom account on their profile
+            {staff.some((s) => s.hasZoom) ? ` (${staff.filter((s) => s.hasZoom).map((s) => s.name).join(", ")})` : " (nobody has yet)"}.
+            To host on Zoom with any host, add{" "}
             <code className="text-xs bg-overlay rounded px-1.5 py-0.5">ZOOM_ACCOUNT_ID</code>,{" "}
             <code className="text-xs bg-overlay rounded px-1.5 py-0.5">ZOOM_CLIENT_ID</code>,{" "}
             <code className="text-xs bg-overlay rounded px-1.5 py-0.5">ZOOM_CLIENT_SECRET</code> and{" "}
@@ -364,7 +369,7 @@ function CallForm({
   onSubmit,
   onCancel,
 }: {
-  staff: { id: string; name: string }[];
+  staff: { id: string; name: string; hasZoom: boolean }[];
   busy: boolean;
   zoomConfigured: boolean;
   timeZone: string | undefined;
@@ -380,13 +385,16 @@ function CallForm({
   const [minStars, setMinStars] = useState(0);
   const [maxAttendees, setMaxAttendees] = useState("");
   const [recordingEnabled, setRecordingEnabled] = useState(true);
-  const [hostOnZoom, setHostOnZoom] = useState(zoomConfigured);
+  const [hostOnZoom, setHostOnZoom] = useState(true);
   const [repeats, setRepeats] = useState(false);
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [intervalWeeks, setIntervalWeeks] = useState(1);
   const [endsOn, setEndsOn] = useState("");
 
   const tz = timeZone ?? "UTC";
+  // Zoom is available with academy credentials, or when the chosen host brought their own.
+  const selectedHost = staff.find((s) => s.id === hostId);
+  const zoomAvailable = zoomConfigured || Boolean(selectedHost?.hasZoom);
   const validDate = isYmd(date);
   // Defaults follow the chosen start date until the admin overrides them.
   const effectiveDays = useMemo(
@@ -429,7 +437,7 @@ function CallForm({
       minStars,
       maxAttendees: maxAttendees ? Number(maxAttendees) : null,
       recordingEnabled,
-      hostOnZoom: zoomConfigured && hostOnZoom,
+      hostOnZoom: zoomAvailable && hostOnZoom,
       ...(rule ? { repeat: { daysOfWeek: rule.daysOfWeek, intervalWeeks: rule.intervalWeeks, endsOn: rule.endsOn } } : {}),
     });
   }
@@ -450,7 +458,7 @@ function CallForm({
         <select className="input" value={hostId} onChange={(e) => setHostId(e.target.value)}>
           <option value="">No host</option>
           {staff.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
+            <option key={s.id} value={s.id}>{s.name}{s.hasZoom && !zoomConfigured ? " (own Zoom)" : ""}</option>
           ))}
         </select>
       </div>
@@ -543,9 +551,14 @@ function CallForm({
           <input type="checkbox" checked={recordingEnabled} onChange={(e) => setRecordingEnabled(e.target.checked)} />
           Enable recording
         </label>
-        <label className={`flex items-center gap-2 text-sm ${zoomConfigured ? "" : "text-ink-dim"}`} title={zoomConfigured ? undefined : "Add Zoom credentials to host calls on Zoom"}>
-          <input type="checkbox" checked={zoomConfigured && hostOnZoom} disabled={!zoomConfigured} onChange={(e) => setHostOnZoom(e.target.checked)} />
-          Host on Zoom{repeats ? " (one recurring meeting)" : ""}{!zoomConfigured && " — not connected"}
+        <label
+          className={`flex items-center gap-2 text-sm ${zoomAvailable ? "" : "text-ink-dim"}`}
+          title={zoomAvailable ? undefined : "Pick a host who connected their own Zoom account, or add academy-wide Zoom credentials"}
+        >
+          <input type="checkbox" checked={zoomAvailable && hostOnZoom} disabled={!zoomAvailable} onChange={(e) => setHostOnZoom(e.target.checked)} />
+          Host on Zoom{repeats ? " (one recurring meeting)" : ""}
+          {zoomAvailable && !zoomConfigured && selectedHost ? ` — ${selectedHost.name}'s account` : ""}
+          {!zoomAvailable && " — not connected"}
         </label>
       </div>
       <div className="sm:col-span-2 flex gap-2">

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser, isStaff } from "@/lib/auth";
 import { canBookOneOnOne } from "@/lib/access";
 import { getBookableHosts, getMyBookings, serializeBooking } from "@/lib/booking-service";
-import { getMeetingProvider } from "@/lib/providers/meetings";
+import { anyZoomAvailable } from "@/lib/zoom-connections";
 import { LockedNotice } from "@/components/ui/Locked";
 import { Icons } from "@/components/ui/icons";
 import { BookingScheduler } from "@/components/one-on-ones/BookingScheduler";
@@ -13,12 +13,12 @@ export const metadata = { title: "1-on-1s" };
 export default async function OneOnOnesPage() {
   const user = await requireUser();
   const staff = isStaff(user.role);
-  const [access, hosts, mine] = await Promise.all([
+  const [access, hosts, mine, providerConfigured] = await Promise.all([
     canBookOneOnOne(user),
     getBookableHosts(),
     getMyBookings(user.id),
+    anyZoomAvailable(),
   ]);
-  const providerConfigured = getMeetingProvider().configured;
   const otherHosts = hosts.filter((h) => h.id !== user.id);
 
   return (

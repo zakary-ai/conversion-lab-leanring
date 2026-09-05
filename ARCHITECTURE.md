@@ -44,7 +44,8 @@ Nothing third-party is faked. Each provider is an interface with a `configured` 
 
 - **`video.ts`** — `VideoAsset { provider, reference }` resolves to `embed` (YouTube/Vimeo), `native` (direct URL / storage key), or `unavailable`. Swapping hosts (Mux, Cloudflare Stream) = adding a resolver; the LMS never changes. Video files are never stored in the database.
 - **`rtc.ts`** — `RtcProvider` (Daily.co built in): `createRoom`/`getJoinUrl`. The join API returns `{ configured: false, message }` without credentials and the call page renders a setup notice instead of a dead room.
-- **`meetings.ts`** — `MeetingProvider` (Zoom Server-to-Server OAuth built in): `createMeeting`/`deleteMeeting` with a cached access token. Bookings never depend on it: a failure or missing credentials leaves `joinUrl` null and the UI says so.
+- **`meetings.ts`** — `MeetingProvider` (Zoom Server-to-Server OAuth built in): `createMeeting`/`deleteMeeting`/`verify` with one cached access token per set of credentials. Bookings never depend on it: a failure or missing credentials leaves `joinUrl` null and the UI says so.
+- **`zoom-connections.ts`** (in `lib/`) — per-person Zoom credentials (`ZoomConnection`, secret encrypted via `lib/secrets.ts`). `resolveMeetingProviderForHost` picks the host's own account first, then the academy env credentials; meetings remember `meetingConnectionId` so later updates and cancellations use the same credentials.
 - **`email.ts`** — `EmailProvider` (Resend built in); dev fallback logs emails (password-reset links stay usable), production reports not-sent.
 - **`storage.ts`** — `StorageProvider` with local-disk default (`./storage`, served by `/api/files/[...key]` behind auth, path-traversal-safe). The interface matches what an S3 client needs.
 

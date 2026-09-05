@@ -4,7 +4,8 @@ import { audit } from "./audit";
 import { notifyMany } from "./notifications";
 import { formatDate, formatTime } from "./format";
 import { resolveTimeZone, zoneOffsetLabel } from "./timezone";
-import { getMeetingProvider, MEETING_PROVIDER_SETUP_MESSAGE } from "./providers/meetings";
+import { MEETING_PROVIDER_SETUP_MESSAGE } from "./providers/meetings";
+import { providerForMeeting, resolveMeetingProviderForHost } from "./zoom-connections";
 import { describeRule, seriesEndsAt, seriesOccurrences, validateRule, type SeriesRule } from "./call-series";
 
 /**
@@ -13,6 +14,8 @@ import { describeRule, seriesEndsAt, seriesOccurrences, validateRule, type Serie
  *
  * Zoom is best effort everywhere: a provider failure never loses a call or
  * a series — the result carries an honest `video` state the UI can show.
+ * Credentials are the host's own Zoom connection when they have one, else
+ * the academy-wide ones (see lib/zoom-connections.ts).
  */
 
 export class CallRuleError extends Error {
@@ -35,16 +38,6 @@ export type CallInput = {
   hostOnZoom: boolean;
 };
 
-/** Zoom user a call's meeting is created under: the host's own seat if they set one, else the academy default. */
-async function zoomUserFor(hostId: string | null | undefined, defaultUserId: string): Promise<string> {
-  if (hostId) {
-    const availability = await db.hostAvailability.findUnique({ where: { hostId }, select: { zoomUserId: true } });
-    const own = availability?.zoomUserId?.trim();
-    if (own) return own;
-  }
-  return defaultUserId;
-}
-
 function noZoom(configured: boolean): VideoResult {
   return configured
     ? { configured: true, hosted: false }
@@ -59,10 +52,10 @@ export async function createSingleCall(
   let call = await db.liveCall.create({ data });
   await audit({ actorId, action: "call.create", entityType: "call", entityId: call.id, details: { title: call.title } });
 
-  const provider = getMeetingProvider();
-  let video: VideoResult = noZoom(provider.configured);
-  if (hostOnZoom && provider.configured) {
-    const zoomUser = await zoomUserFor(call.hostId, provider.defaultUserId);
+  const resolved = await resolveMeetingProviderForHost(call.hostId);
+  let video: VideoResult = noZoom(Boolean(resolved));
+  if (hostOnZoom && resolved) {
+    const { provider, userId: zoomUser, connectionId } = resolved;
     if (!zoomUser) {
       video = { configured: true, hosted: false, message: "No Zoom user is set (ZOOM_USER_ID). The call was scheduled without a Zoom link." };
     } else {
@@ -77,7 +70,13 @@ export async function createSingleCall(
         });
         call = await db.liveCall.update({
           where: { id: call.id },
-          data: { meetingProvider: provider.name.toLowerCase(), meetingId: meeting.meetingId, joinUrl: meeting.joinUrl, startUrl: meeting.startUrl },
+          data: {
+            meetingProvider: provider.name.toLowerCase(),
+            meetingId: meeting.meetingId,
+            joinUrl: meeting.joinUrl,
+            startUrl: meeting.startUrl,
+            meetingConnectionId: connectionId,
+          },
         });
         video = { configured: true, hosted: true };
       } catch (err) {
@@ -131,11 +130,11 @@ export async function createCallSeries(
     details: { title: series.title, rule: describeRule(rule), occurrences: calls.length },
   });
 
-  const provider = getMeetingProvider();
-  let video: VideoResult = noZoom(provider.configured);
+  const resolved = await resolveMeetingProviderForHost(series.hostId);
+  let video: VideoResult = noZoom(Boolean(resolved));
   let updatedSeries = series;
-  if (hostOnZoom && provider.configured) {
-    const zoomUser = await zoomUserFor(series.hostId, provider.defaultUserId);
+  if (hostOnZoom && resolved) {
+    const { provider, userId: zoomUser, connectionId } = resolved;
     if (!zoomUser) {
       video = { configured: true, hosted: false, message: "No Zoom user is set (ZOOM_USER_ID). The series was scheduled without a Zoom link." };
     } else {
@@ -154,7 +153,13 @@ export async function createCallSeries(
         await db.$transaction([
           db.callSeries.update({
             where: { id: series.id },
-            data: { meetingProvider: providerName, meetingId: meeting.meetingId, joinUrl: meeting.joinUrl, startUrl: meeting.startUrl },
+            data: {
+              meetingProvider: providerName,
+              meetingId: meeting.meetingId,
+              joinUrl: meeting.joinUrl,
+              startUrl: meeting.startUrl,
+              meetingConnectionId: connectionId,
+            },
           }),
           ...calls.map((c) =>
             db.liveCall.update({
@@ -165,6 +170,7 @@ export async function createCallSeries(
                 meetingOccurrenceId: occurrenceIds.get(c.scheduledAt.getTime()) ?? null,
                 joinUrl: meeting.joinUrl,
                 startUrl: meeting.startUrl,
+                meetingConnectionId: connectionId,
               },
             })
           ),
@@ -207,13 +213,13 @@ export async function announceCall(opts: { title: string; minStars: number; firs
 }
 
 /** Remove the Zoom meeting (or just this occurrence of a series meeting). Never throws. */
-async function removeMeetingFor(call: Pick<LiveCall, "id" | "seriesId" | "meetingId" | "meetingOccurrenceId">) {
+async function removeMeetingFor(call: Pick<LiveCall, "id" | "seriesId" | "meetingId" | "meetingOccurrenceId" | "meetingConnectionId">) {
   if (!call.meetingId) return;
   // A series occurrence without its Zoom occurrence id can't be removed on
   // its own — deleting the meeting would take the whole series with it.
   if (call.seriesId && !call.meetingOccurrenceId) return;
-  const provider = getMeetingProvider();
-  if (!provider.configured) return;
+  const provider = await providerForMeeting(call.meetingConnectionId);
+  if (!provider) return;
   try {
     await provider.deleteMeeting(call.meetingId, call.seriesId ? call.meetingOccurrenceId! : undefined);
   } catch (err) {
@@ -245,8 +251,8 @@ export async function deleteCall(callId: string, actorId: string): Promise<void>
 export async function syncCallMeeting(call: LiveCall) {
   if (!call.meetingId) return;
   if (call.seriesId && !call.meetingOccurrenceId) return;
-  const provider = getMeetingProvider();
-  if (!provider.configured) return;
+  const provider = await providerForMeeting(call.meetingConnectionId);
+  if (!provider) return;
   try {
     await provider.updateMeeting(
       call.meetingId,
@@ -279,8 +285,8 @@ export async function cancelSeries(seriesId: string, actorId: string): Promise<{
     db.callSeries.update({ where: { id: seriesId }, data: { status: "CANCELLED", joinUrl: null, startUrl: null } }),
   ]);
   if (series.meetingId) {
-    const provider = getMeetingProvider();
-    if (provider.configured) {
+    const provider = await providerForMeeting(series.meetingConnectionId);
+    if (provider) {
       try {
         await provider.deleteMeeting(series.meetingId);
       } catch (err) {
@@ -307,8 +313,8 @@ export async function updateSeries(
     db.liveCall.updateMany({ where: { seriesId, status: "SCHEDULED", scheduledAt: { gte: now } }, data: patch }),
   ]);
   if (series.meetingId && (patch.title !== undefined || patch.description !== undefined)) {
-    const provider = getMeetingProvider();
-    if (provider.configured) {
+    const provider = await providerForMeeting(series.meetingConnectionId);
+    if (provider) {
       try {
         await provider.updateMeeting(series.meetingId, { topic: patch.title, agenda: patch.description });
       } catch (err) {
